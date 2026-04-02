@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Plus, Trash2, Building2, Users, ClipboardList, ChevronDown, ChevronRight, ExternalLink, Shield, X } from 'lucide-react'
+import { Plus, Trash2, Building2, Users, ClipboardList, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -128,7 +128,7 @@ export function ResourceManager() {
   const currentUser = useAuthStore((s) => s.currentUser)
   const allUsers = useAuthStore((s) => s.users).filter((u) => u.approved)
   const project = useProjectStore((s) => s.currentProject)
-  const { projectMembers, addProjectMember, removeProjectMember, updateProjectMemberRole } = useProjectStore()
+  const { projectMembers, addProjectMember } = useProjectStore()
   const isAdmin = currentUser?.role === 'admin'
   const myProjectRole = project ? useProjectStore.getState().getMyProjectRole(project.id, currentUser?.id || '') : null
   const canManageMembers = isAdmin || myProjectRole === 'pm'
@@ -138,6 +138,7 @@ export function ResourceManager() {
   const availableUsers = allUsers.filter((u) => !currentProjectMembers.some((m) => m.userId === u.id))
   const [selectedUserId, setSelectedUserId] = useState('')
   const [selectedRole, setSelectedRole] = useState<ProjectRole>('editor')
+  const [addMode, setAddMode] = useState<'user' | 'manual'>('user')
 
   // Company form
   const [newCompanyName, setNewCompanyName] = useState('')
@@ -217,72 +218,6 @@ export function ResourceManager() {
         <h2 className="text-lg font-bold text-foreground">담당자 관리</h2>
         <p className="text-sm text-muted-foreground mt-0.5">회사 및 인원을 등록하고 관리합니다</p>
       </div>
-
-      {/* ========== 프로젝트 참여자 (관리자/PM만) ========== */}
-      {canManageMembers && project && (
-        <div className="bg-card rounded-xl border border-border/50 shadow-sm">
-          <div className="px-5 py-3 border-b border-border/40 flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">프로젝트 참여자</h3>
-            <span className="text-xs text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md font-medium">{currentProjectMembers.length}명</span>
-            <span className="text-[10px] text-muted-foreground ml-auto">가입된 사용자를 프로젝트에 추가하고 역할을 지정합니다</span>
-          </div>
-          <div className="p-4 space-y-2">
-            {/* 현재 참여자 목록 */}
-            {currentProjectMembers.map((m) => {
-              const user = allUsers.find((u) => u.id === m.userId)
-              if (!user) return null
-              return (
-                <div key={m.userId} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/30 hover:bg-accent/20">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">{user.name?.[0]}</div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium">{user.name}</span>
-                    <span className="text-xs text-muted-foreground ml-2">{user.email}</span>
-                  </div>
-                  <Select value={m.role} onValueChange={(v) => v && updateProjectMemberRole(project.id, m.userId, v as ProjectRole)}>
-                    <SelectTrigger className="h-7 w-24 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pm" className="text-xs">PM</SelectItem>
-                      <SelectItem value="editor" className="text-xs">편집자</SelectItem>
-                      <SelectItem value="viewer" className="text-xs">뷰어</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-red-400 hover:text-red-600" onClick={() => removeProjectMember(project.id, m.userId)}>
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              )
-            })}
-            {currentProjectMembers.length === 0 && (
-              <p className="text-xs text-muted-foreground/50 text-center py-3">참여자가 없습니다</p>
-            )}
-            {/* 추가 */}
-            {availableUsers.length > 0 && (
-              <div className="flex gap-2 pt-2 border-t border-border/20">
-                <Select value={selectedUserId} onValueChange={(v) => v && setSelectedUserId(v)}>
-                  <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="사용자 선택..." /></SelectTrigger>
-                  <SelectContent>
-                    {availableUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id} className="text-xs">{u.name} ({u.email})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={selectedRole} onValueChange={(v) => v && setSelectedRole(v as ProjectRole)}>
-                  <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pm" className="text-xs">PM</SelectItem>
-                    <SelectItem value="editor" className="text-xs">편집자</SelectItem>
-                    <SelectItem value="viewer" className="text-xs">뷰어</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button size="sm" className="h-8" onClick={() => { if (selectedUserId && project) { addProjectMember({ projectId: project.id, userId: selectedUserId, role: selectedRole }); setSelectedUserId('') } }} disabled={!selectedUserId}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />추가
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ========== 회사 관리 ========== */}
       <div className="bg-card rounded-xl border border-border/50 shadow-sm">
@@ -383,59 +318,114 @@ export function ResourceManager() {
           <span className="ml-auto text-[10px] text-muted-foreground">담당자를 클릭하면 배정 작업 목록을 확인할 수 있습니다</span>
         </div>
 
-        {/* 인원 추가 */}
-        <div className="p-4 border-b bg-muted/30">
-          <div className="flex gap-2 items-end">
-            <div className="w-36">
-              <label className="text-xs text-muted-foreground">소속 회사</label>
-              <Select value={newMemberCompany} onValueChange={(v) => v && setNewMemberCompany(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="회사 선택">
-                    {newMemberCompany ? companies.find(c => c.id === newMemberCompany)?.shortName || '선택' : undefined}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                        {c.shortName}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground">이름</label>
-              <Input
-                placeholder="홍길동"
-                value={newMemberName}
-                onChange={(e) => setNewMemberName(e.target.value)}
-              />
-            </div>
-            <div className="w-28">
-              <label className="text-xs text-muted-foreground">직책/역할</label>
-              <Input
-                placeholder="PM"
-                value={newMemberRole}
-                onChange={(e) => setNewMemberRole(e.target.value)}
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground">이메일</label>
-              <Input
-                placeholder="email@company.com"
-                value={newMemberEmail}
-                onChange={(e) => setNewMemberEmail(e.target.value)}
-              />
-            </div>
-            <Button onClick={handleAddMember} size="sm" className="mb-0.5" disabled={!newMemberCompany}>
-              <Plus className="h-4 w-4 mr-1" />
-              추가
-            </Button>
+        {/* 인원 추가 - 2가지 방법 */}
+        {canManageMembers && (
+        <div className="p-4 border-b bg-muted/30 space-y-3">
+          {/* 탭 전환 */}
+          <div className="flex gap-1">
+            <button
+              className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                addMode === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
+              )}
+              onClick={() => setAddMode('user')}
+            >
+              가입 사용자 추가
+            </button>
+            <button
+              className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                addMode === 'manual' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
+              )}
+              onClick={() => setAddMode('manual')}
+            >
+              수동 입력
+            </button>
           </div>
+
+          {addMode === 'user' ? (
+            /* 가입 사용자에서 추가 */
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground">가입 사용자</label>
+                <Select value={selectedUserId} onValueChange={(v) => v && setSelectedUserId(v)}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="사용자 선택..." /></SelectTrigger>
+                  <SelectContent>
+                    {availableUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id} className="text-xs">{u.name} ({u.email})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-36">
+                <label className="text-xs text-muted-foreground">소속 회사</label>
+                <Select value={newMemberCompany} onValueChange={(v) => v && setNewMemberCompany(v)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="회사">{newMemberCompany ? companies.find(c => c.id === newMemberCompany)?.shortName : undefined}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    {companies.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />{c.shortName}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-24">
+                <label className="text-xs text-muted-foreground">프로젝트 역할</label>
+                <Select value={selectedRole} onValueChange={(v) => v && setSelectedRole(v as ProjectRole)}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pm" className="text-xs">PM</SelectItem>
+                    <SelectItem value="editor" className="text-xs">편집자</SelectItem>
+                    <SelectItem value="viewer" className="text-xs">뷰어</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" className="h-9" disabled={!selectedUserId || !newMemberCompany} onClick={() => {
+                const user = allUsers.find((u) => u.id === selectedUserId)
+                if (!user || !newMemberCompany) return
+                // 인원으로 등록
+                addMember({ id: crypto.randomUUID(), company_id: newMemberCompany, name: user.name, email: user.email, role: '', created_at: new Date().toISOString() })
+                // 프로젝트 참여자로도 등록
+                if (project) addProjectMember({ projectId: project.id, userId: user.id, role: selectedRole })
+                setSelectedUserId('')
+              }}>
+                <Plus className="h-4 w-4 mr-1" />추가
+              </Button>
+            </div>
+          ) : (
+            /* 수동 입력 */
+            <div className="flex gap-2 items-end">
+              <div className="w-36">
+                <label className="text-xs text-muted-foreground">소속 회사</label>
+                <Select value={newMemberCompany} onValueChange={(v) => v && setNewMemberCompany(v)}>
+                  <SelectTrigger><SelectValue placeholder="회사">{newMemberCompany ? companies.find(c => c.id === newMemberCompany)?.shortName : undefined}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    {companies.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />{c.shortName}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground">이름</label>
+                <Input placeholder="홍길동" value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} />
+              </div>
+              <div className="w-28">
+                <label className="text-xs text-muted-foreground">직책</label>
+                <Input placeholder="PM" value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value)} />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground">이메일</label>
+                <Input placeholder="email@company.com" value={newMemberEmail} onChange={(e) => setNewMemberEmail(e.target.value)} />
+              </div>
+              <Button onClick={handleAddMember} size="sm" className="mb-0.5" disabled={!newMemberCompany}>
+                <Plus className="h-4 w-4 mr-1" />추가
+              </Button>
+            </div>
+          )}
         </div>
+        )}
 
         {/* 인원 목록 (회사별 그룹) */}
         {companies.map((company) => {
