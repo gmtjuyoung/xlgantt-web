@@ -90,7 +90,7 @@ export function LoginPage() {
         </div>
 
         <div className="text-[11px] text-muted-foreground/40 text-center mt-4 space-y-0.5">
-          <p>관리자: admin@gmt.com / admin123</p>
+          <p>관리자: admin@gmtc.kr / gmtvision!</p>
           <p>홍길동: hong@gmt.co.kr / 1234 · 김철수: kim@gmt.co.kr / 1234</p>
         </div>
       </div>

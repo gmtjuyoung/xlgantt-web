@@ -7,6 +7,7 @@ export interface User {
   name: string
   role: 'admin' | 'member'
   avatar_url?: string
+  approved: boolean       // 관리자 승인 여부
   created_at: string
 }
 
@@ -28,21 +29,22 @@ interface AuthState {
 
 const ADMIN_USER: User = {
   id: 'user-admin',
-  email: 'admin@gmt.com',
+  email: 'admin@gmtc.kr',
   name: '관리자',
   role: 'admin',
+  approved: true,
   created_at: '2025-01-01T00:00:00Z',
 }
 
 const INITIAL_USERS: User[] = [
   ADMIN_USER,
-  { id: 'user-hong', email: 'hong@gmt.co.kr', name: '홍길동', role: 'member', created_at: '2025-01-15T00:00:00Z' },
-  { id: 'user-kim', email: 'kim@gmt.co.kr', name: '김철수', role: 'member', created_at: '2025-02-01T00:00:00Z' },
-  { id: 'user-lee', email: 'lee@gmt.co.kr', name: '이영희', role: 'member', created_at: '2025-02-15T00:00:00Z' },
+  { id: 'user-hong', email: 'hong@gmt.co.kr', name: '홍길동', role: 'member', approved: true, created_at: '2025-01-15T00:00:00Z' },
+  { id: 'user-kim', email: 'kim@gmt.co.kr', name: '김철수', role: 'member', approved: true, created_at: '2025-02-01T00:00:00Z' },
+  { id: 'user-lee', email: 'lee@gmt.co.kr', name: '이영희', role: 'member', approved: true, created_at: '2025-02-15T00:00:00Z' },
 ]
 
 const INITIAL_PASSWORDS: Record<string, string> = {
-  'admin@gmt.com': 'admin123',
+  'admin@gmtc.kr': 'gmtvision!',
   'hong@gmt.co.kr': '1234',
   'kim@gmt.co.kr': '1234',
   'lee@gmt.co.kr': '1234',
@@ -61,6 +63,7 @@ export const useAuthStore = create<AuthState>()(
         const user = users.find((u) => u.email === email)
         if (!user) return { success: false, error: '등록되지 않은 이메일입니다' }
         if (passwords[email] !== password) return { success: false, error: '비밀번호가 일치하지 않습니다' }
+        if (!user.approved) return { success: false, error: '관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.' }
         set({ currentUser: user, isAuthenticated: true })
         return { success: true }
       },
@@ -75,13 +78,12 @@ export const useAuthStore = create<AuthState>()(
           email,
           name,
           role: 'member',
+          approved: false,  // 관리자 승인 대기
           created_at: new Date().toISOString(),
         }
         set({
           users: [...users, newUser],
           passwords: { ...passwords, [email]: password },
-          currentUser: newUser,
-          isAuthenticated: true,
         })
         return { success: true }
       },
@@ -140,6 +142,7 @@ export const useAuthStore = create<AuthState>()(
           email,
           name,
           role,
+          approved: true,  // 관리자가 수동 등록하면 자동 승인
           created_at: new Date().toISOString(),
         }
         set({

@@ -43,7 +43,8 @@ export function SignupPage() {
     }
     const result = signup(email, name, password)
     if (result.success) {
-      navigate('/projects')
+      alert('회원가입이 완료되었습니다.\n관리자 승인 후 로그인할 수 있습니다.')
+      navigate('/login')
     } else {
       setError(result.error || '회원가입에 실패했습니다')
     }

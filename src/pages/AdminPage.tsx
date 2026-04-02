@@ -106,6 +106,7 @@ export function AdminPage() {
                 <TableHead className="text-xs">이름</TableHead>
                 <TableHead className="text-xs">이메일</TableHead>
                 <TableHead className="text-xs">역할</TableHead>
+                <TableHead className="text-xs">승인</TableHead>
                 <TableHead className="text-xs">가입일</TableHead>
                 <TableHead className="text-xs w-[140px]">작업</TableHead>
               </TableRow>
@@ -134,6 +135,22 @@ export function AdminPage() {
                         <SelectItem value="member" className="text-xs">멤버</SelectItem>
                       </SelectContent>
                     </Select>
+                  </TableCell>
+                  <TableCell>
+                    {user.role === 'admin' ? (
+                      <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border-emerald-200">승인</Badge>
+                    ) : (
+                      <button
+                        onClick={() => updateUser(user.id, { approved: !user.approved })}
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                          user.approved
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                            : 'bg-red-50 text-red-600 border-red-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                        }`}
+                      >
+                        {user.approved ? '승인' : '대기'}
+                      </button>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {new Date(user.created_at).toLocaleDateString('ko-KR')}
