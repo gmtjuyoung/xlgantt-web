@@ -1,13 +1,22 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export type UserRole = 'admin' | 'pm' | 'member' | 'guest'
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: '관리자',
+  pm: '프로젝트 관리자',
+  member: '멤버',
+  guest: '게스트',
+}
+
 export interface User {
   id: string
   email: string
   name: string
-  role: 'admin' | 'member'
+  role: UserRole
   avatar_url?: string
-  approved: boolean       // 관리자 승인 여부
+  approved: boolean
   created_at: string
 }
 
@@ -24,7 +33,7 @@ interface AuthState {
   updateUser: (userId: string, updates: Partial<User>) => void
   deleteUser: (userId: string) => void
   changePassword: (userId: string, currentPassword: string, newPassword: string) => { success: boolean; error?: string }
-  addUserManual: (email: string, name: string, password: string, role: 'admin' | 'member') => { success: boolean; error?: string }
+  addUserManual: (email: string, name: string, password: string, role: UserRole) => { success: boolean; error?: string }
 }
 
 const ADMIN_USER: User = {
@@ -154,7 +163,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'xlgantt-auth',
-      version: 2, // 버전 변경 시 기존 캐시 무시하고 초기값 사용
+      version: 3, // 4단계 권한 체계 적용
       merge: (persisted: unknown, current: AuthState) => {
         const p = persisted as Partial<AuthState> | undefined
         if (!p) return current

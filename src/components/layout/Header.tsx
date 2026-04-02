@@ -43,7 +43,7 @@ import { ProjectSwitcher } from '@/components/layout/ProjectSwitcher'
 import { useNavigate } from 'react-router-dom'
 
 /* 그룹화된 탭 구조 - role 기반 표시 */
-type TabDef = { key: ViewMode; label: string; icon: React.ReactNode; adminOnly?: boolean }
+type TabDef = { key: ViewMode; label: string; icon: React.ReactNode; adminOnly?: boolean; pmOrAdmin?: boolean }
 type TabGroup = { tabs: TabDef[] }
 
 const TAB_GROUPS: TabGroup[] = [
@@ -54,15 +54,15 @@ const TAB_GROUPS: TabGroup[] = [
   { tabs: [
     { key: 'progress', label: '진척현황', icon: <PieChart className="h-3.5 w-3.5" /> },
     { key: 'analysis', label: '분석', icon: <Activity className="h-3.5 w-3.5" /> },
-    { key: 'workload', label: '작업량', icon: <TrendingUp className="h-3.5 w-3.5" />, adminOnly: true },
+    { key: 'workload', label: '작업량', icon: <TrendingUp className="h-3.5 w-3.5" />, pmOrAdmin: true },
   ]},
   { tabs: [
-    { key: 'calendar', label: '달력', icon: <Calendar className="h-3.5 w-3.5" />, adminOnly: true },
-    { key: 'resources', label: '담당자', icon: <Users className="h-3.5 w-3.5" />, adminOnly: true },
+    { key: 'calendar', label: '달력', icon: <Calendar className="h-3.5 w-3.5" />, pmOrAdmin: true },
+    { key: 'resources', label: '담당자', icon: <Users className="h-3.5 w-3.5" />, pmOrAdmin: true },
   ]},
 ]
 
-const ICON_TABS: { key: ViewMode; icon: React.ReactNode; title: string; adminOnly?: boolean }[] = [
+const ICON_TABS: { key: ViewMode; icon: React.ReactNode; title: string; adminOnly?: boolean; pmOrAdmin?: boolean }[] = [
   { key: 'activity', icon: <Clock className="h-3.5 w-3.5" />, title: '활동 로그' },
   { key: 'settings', icon: <Settings className="h-3.5 w-3.5" />, title: '설정', adminOnly: true },
 ]
@@ -77,11 +77,12 @@ export function Header() {
     useUIStore()
 
   const isAdmin = currentUser?.role === 'admin'
+  const isPmOrAdmin = isAdmin || currentUser?.role === 'pm'
 
   // role 기반 보이는 탭 목록 (모바일용)
   const allVisibleTabs = useMemo(() => {
-    const tabs = TAB_GROUPS.flatMap((g) => g.tabs).filter((t) => !t.adminOnly || isAdmin)
-    const icons = ICON_TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => ({ key: t.key, label: t.title, icon: t.icon }))
+    const tabs = TAB_GROUPS.flatMap((g) => g.tabs).filter((t) => (!t.adminOnly || isAdmin) && (!t.pmOrAdmin || isPmOrAdmin))
+    const icons = ICON_TABS.filter((t) => (!t.adminOnly || isAdmin) && (!t.pmOrAdmin || isPmOrAdmin)).map((t) => ({ key: t.key, label: t.title, icon: t.icon }))
     return [...tabs, ...icons]
   }, [isAdmin])
 
@@ -185,7 +186,7 @@ export function Header() {
       {/* View Tabs - Grouped (role-based) */}
       <nav className="hidden md:flex items-center">
         {TAB_GROUPS.map((group, gi) => {
-          const visibleTabs = group.tabs.filter((t) => !t.adminOnly || isAdmin)
+          const visibleTabs = group.tabs.filter((t) => (!t.adminOnly || isAdmin) && (!t.pmOrAdmin || isPmOrAdmin))
           if (visibleTabs.length === 0) return null
           return (
             <div key={gi} className="flex items-center">
@@ -234,7 +235,7 @@ export function Header() {
 
       {/* Icon Tabs (활동/설정) - role-based */}
       <div className="hidden md:flex items-center gap-0.5 flex-shrink-0">
-        {ICON_TABS.filter((t) => !t.adminOnly || isAdmin).map((tab) => (
+        {ICON_TABS.filter((t) => (!t.adminOnly || isAdmin) && (!t.pmOrAdmin || isPmOrAdmin)).map((tab) => (
           <Button
             key={tab.key}
             variant={activeView === tab.key ? 'default' : 'ghost'}

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { BarChart3, Plus, Shield, Trash2, KeyRound, ArrowLeft } from 'lucide-react'
-import { useAuthStore, type User } from '@/stores/auth-store'
+import { useAuthStore, type User, type UserRole } from '@/stores/auth-store'
 
 export function AdminPage() {
   const navigate = useNavigate()
@@ -17,7 +17,7 @@ export function AdminPage() {
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [newRole, setNewRole] = useState<'admin' | 'member'>('member')
+  const [newRole, setNewRole] = useState<UserRole>('member')
   const [addError, setAddError] = useState('')
 
   const [resetTarget, setResetTarget] = useState<User | null>(null)
@@ -59,7 +59,7 @@ export function AdminPage() {
     }
   }
 
-  const handleRoleChange = (userId: string, role: 'admin' | 'member') => {
+  const handleRoleChange = (userId: string, role: UserRole) => {
     updateUser(userId, { role })
   }
 
@@ -124,15 +124,17 @@ export function AdminPage() {
                   <TableCell>
                     <Select
                       value={user.role}
-                      onValueChange={(v) => handleRoleChange(user.id, v as 'admin' | 'member')}
+                      onValueChange={(v) => handleRoleChange(user.id, v as UserRole)}
                       disabled={user.id === currentUser.id}
                     >
-                      <SelectTrigger className="h-7 w-24 text-xs">
+                      <SelectTrigger className="h-7 w-28 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="admin" className="text-xs">관리자</SelectItem>
+                        <SelectItem value="pm" className="text-xs">PM</SelectItem>
                         <SelectItem value="member" className="text-xs">멤버</SelectItem>
+                        <SelectItem value="guest" className="text-xs">게스트</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -206,13 +208,15 @@ export function AdminPage() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">역할</label>
-              <Select value={newRole} onValueChange={(v) => setNewRole(v as 'admin' | 'member')}>
+              <Select value={newRole} onValueChange={(v) => setNewRole(v as UserRole)}>
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">멤버</SelectItem>
                   <SelectItem value="admin">관리자</SelectItem>
+                  <SelectItem value="pm">PM (프로젝트 관리자)</SelectItem>
+                  <SelectItem value="member">멤버</SelectItem>
+                  <SelectItem value="guest">게스트</SelectItem>
                 </SelectContent>
               </Select>
             </div>
