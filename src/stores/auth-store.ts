@@ -367,10 +367,18 @@ export const useAuthStore = create<AuthState>()(
             if (updates.avatar_url !== undefined) profileUpdates.avatar_url = updates.avatar_url
 
             if (Object.keys(profileUpdates).length > 0) {
-              const { error } = await supabase.from('profiles').update(profileUpdates).eq('id', userId)
-              if (error) {
-                console.error('프로필 업데이트 실패:', error.message)
-                return
+              // 본인 수정은 직접 UPDATE, 다른 사용자는 RPC
+              if (userId === currentUser?.id) {
+                const { error } = await supabase.from('profiles').update(profileUpdates).eq('id', userId)
+                if (error) { console.error('프로필 업데이트 실패:', error.message); return }
+              } else {
+                const { error } = await supabase.rpc('admin_update_profile', {
+                  target_user_id: userId,
+                  new_role: updates.role ?? null,
+                  new_approved: updates.approved ?? null,
+                  new_name: updates.name ?? null,
+                })
+                if (error) { console.error('관리자 업데이트 실패:', error.message); return }
               }
             }
 
