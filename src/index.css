@@ -133,15 +133,17 @@
   }
   html {
     @apply font-sans;
-    font-size: 15px;
+    font-size: 16px;
     line-height: 1.5;
   }
 
-  /* 전역 폰트 최소 크기 보정 - 너무 작은 텍스트 방지 */
-  .text-\[10px\] { font-size: 11px !important; }
-  .text-\[11px\] { font-size: 12px !important; }
-  .text-xs { font-size: 13px !important; line-height: 1.4 !important; }
-  .text-sm { font-size: 14px !important; line-height: 1.5 !important; }
+  /* 전역 폰트 최소 크기 보정 - 1920x1080 기준 가독성 확보 */
+  .text-\[9px\] { font-size: 12px !important; }
+  .text-\[10px\] { font-size: 13px !important; }
+  .text-\[11px\] { font-size: 14px !important; }
+  .text-xs { font-size: 14px !important; line-height: 1.4 !important; }
+  .text-sm { font-size: 15px !important; line-height: 1.5 !important; }
+  .text-base { font-size: 16px !important; line-height: 1.5 !important; }
 
   /* Modern scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
