@@ -13,6 +13,7 @@ import { MyTasksDashboard } from '@/components/mytasks/MyTasksDashboard'
 import { MemberTasksView } from '@/components/member-tasks/MemberTasksView'
 import { useProjectStore } from '@/stores/project-store'
 import { useTaskStore } from '@/stores/task-store'
+import { useResourceStore } from '@/stores/resource-store'
 import { useUIStore } from '@/stores/ui-store'
 import { useUndoStore } from '@/stores/undo-store'
 import { SAMPLE_PROJECT, SAMPLE_TASKS, SAMPLE_DEPENDENCIES } from '@/lib/sample-data'
@@ -49,7 +50,8 @@ function MainContent() {
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
   const { switchProject, currentProject, setProject } = useProjectStore()
-  const { setTasks, setDependencies } = useTaskStore()
+  const { setTasks, setDependencies, loadTasks, loadDependencies } = useTaskStore()
+  const { loadResources } = useResourceStore()
   const clearUndo = useUndoStore((s) => s.clear)
 
   useEffect(() => {
@@ -59,18 +61,39 @@ export function ProjectWorkspace() {
     clearUndo()
     switchProject(projectId)
 
-    // sample-project-001인 경우 샘플 데이터 로드, 그 외는 초기화
-    if (projectId === SAMPLE_PROJECT.id) {
-      if (!currentProject || currentProject.id !== SAMPLE_PROJECT.id) {
-        setProject(SAMPLE_PROJECT)
+    // Supabase에서 데이터 로드 시도
+    const loadFromServer = async () => {
+      try {
+        await Promise.all([
+          loadTasks(projectId),
+          loadDependencies(projectId),
+          loadResources(projectId),
+        ])
+        // 서버에서 작업 데이터가 비어있고, 샘플 프로젝트인 경우 폴백
+        const { tasks } = useTaskStore.getState()
+        if (tasks.length === 0 && projectId === SAMPLE_PROJECT.id) {
+          if (!currentProject || currentProject.id !== SAMPLE_PROJECT.id) {
+            setProject(SAMPLE_PROJECT)
+          }
+          setTasks(SAMPLE_TASKS)
+          setDependencies(SAMPLE_DEPENDENCIES)
+        }
+      } catch (err) {
+        console.error('서버 데이터 로드 실패, 폴백 사용:', err)
+        // 폴백: 샘플 프로젝트인 경우 샘플 데이터 사용
+        if (projectId === SAMPLE_PROJECT.id) {
+          if (!currentProject || currentProject.id !== SAMPLE_PROJECT.id) {
+            setProject(SAMPLE_PROJECT)
+          }
+          setTasks(SAMPLE_TASKS)
+          setDependencies(SAMPLE_DEPENDENCIES)
+        } else {
+          setTasks([])
+          setDependencies([])
+        }
       }
-      setTasks(SAMPLE_TASKS)
-      setDependencies(SAMPLE_DEPENDENCIES)
-    } else {
-      // 다른 프로젝트는 빈 상태로 시작 (나중에 DB에서 로드)
-      setTasks([])
-      setDependencies([])
     }
+    loadFromServer()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 

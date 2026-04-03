@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import type { Company, TeamMember, TaskAssignment, TaskDetail, TaskAttachment, TaskComment } from '@/lib/resource-types'
 import { useActivityStore } from '@/stores/activity-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
 import { useTaskStore } from '@/stores/task-store'
+import { supabase } from '@/lib/supabase'
 
 function logActivity(params: {
   action: 'create' | 'update' | 'delete' | 'complete' | 'status_change'
@@ -26,11 +26,68 @@ function logActivity(params: {
   })
 }
 
+/** DB row → 로컬 Company 변환 */
+function dbToCompany(row: Record<string, unknown>): Company {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    shortName: (row.short_name as string) || '',
+    color: (row.color as string) || '#3b82f6',
+    created_at: row.created_at as string,
+  }
+}
+
+/** DB row → 로컬 TeamMember 변환 */
+function dbToMember(row: Record<string, unknown>): TeamMember {
+  return {
+    id: row.id as string,
+    company_id: row.company_id as string,
+    name: row.name as string,
+    email: (row.email as string) || undefined,
+    role: (row.role as string) || undefined,
+    phone: (row.phone as string) || undefined,
+    created_at: row.created_at as string,
+  }
+}
+
+/** DB row → 로컬 TaskAssignment 변환 */
+function dbToAssignment(row: Record<string, unknown>): TaskAssignment {
+  return {
+    id: row.id as string,
+    task_id: row.task_id as string,
+    member_id: row.member_id as string,
+    allocation_percent: (row.allocation_percent as number) ?? 100,
+  }
+}
+
+/** DB row → 로컬 TaskDetail 변환 */
+function dbToTaskDetail(row: Record<string, unknown>): TaskDetail {
+  return {
+    id: row.id as string,
+    task_id: row.task_id as string,
+    sort_order: (row.sort_order as number) ?? 0,
+    title: (row.title as string) || '',
+    description: (row.description as string) || undefined,
+    status: (row.status as 'todo' | 'in_progress' | 'done') || 'todo',
+    assignee_id: undefined,
+    assignee_ids: (row.assignee_ids as string[]) || undefined,
+    due_date: (row.due_date as string) || undefined,
+    started_at: undefined,
+    completed_at: undefined,
+    created_at: row.created_at as string,
+    attachments: [],
+    comments: [],
+  }
+}
+
 interface ResourceState {
   companies: Company[]
   members: TeamMember[]
   assignments: TaskAssignment[]
   taskDetails: TaskDetail[]
+
+  // Load from Supabase
+  loadResources: (projectId: string) => Promise<void>
 
   // Company CRUD
   addCompany: (company: Company) => void
@@ -78,7 +135,7 @@ const SAMPLE_MEMBERS: TeamMember[] = [
   { id: 'mem-005', company_id: 'comp-003', name: '정수진', role: 'QA', email: 'jung@lgcns.com', created_at: new Date().toISOString() },
 ]
 
-export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
+export const useResourceStore = create<ResourceState>()((set, get) => ({
   companies: SAMPLE_COMPANIES,
   members: SAMPLE_MEMBERS,
   assignments: [
@@ -98,23 +155,144 @@ export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
     { id: 'detail-006', task_id: 'task-009', sort_order: 1000, title: '단위 테스트 작성', status: 'todo', assignee_id: 'mem-002', due_date: '2025-09-15', created_at: '2025-08-05T09:00:00Z' },
   ],
 
-  addCompany: (company) => set((s) => ({ companies: [...s.companies, company] })),
-  updateCompany: (id, changes) => set((s) => ({
-    companies: s.companies.map((c) => c.id === id ? { ...c, ...changes } : c),
-  })),
-  deleteCompany: (id) => set((s) => ({
-    companies: s.companies.filter((c) => c.id !== id),
-    members: s.members.filter((m) => m.company_id !== id),
-  })),
+  loadResources: async (projectId) => {
+    // 1. companies (프로젝트에 직접 연결)
+    const { data: compData, error: compErr } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('project_id', projectId)
+    if (compErr) {
+      console.error('회사 로드 실패:', compErr.message)
+    }
+    const companies = compData ? compData.map(dbToCompany) : undefined
 
-  addMember: (member) => set((s) => ({ members: [...s.members, member] })),
-  updateMember: (id, changes) => set((s) => ({
-    members: s.members.map((m) => m.id === id ? { ...m, ...changes } : m),
-  })),
-  deleteMember: (id) => set((s) => ({
-    members: s.members.filter((m) => m.id !== id),
-    assignments: s.assignments.filter((a) => a.member_id !== id),
-  })),
+    // 2. team_members (companies를 통해 프로젝트에 연결)
+    let members: TeamMember[] | undefined
+    if (compData && compData.length > 0) {
+      const companyIds = compData.map((c: Record<string, unknown>) => c.id as string)
+      const { data: memData, error: memErr } = await supabase
+        .from('team_members')
+        .select('*')
+        .in('company_id', companyIds)
+      if (memErr) {
+        console.error('팀원 로드 실패:', memErr.message)
+      } else if (memData) {
+        members = memData.map(dbToMember)
+      }
+    }
+
+    // 3. task_assignments (tasks를 통해 프로젝트에 연결)
+    const { data: taskData } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('project_id', projectId)
+    let assignments: TaskAssignment[] | undefined
+    if (taskData && taskData.length > 0) {
+      const taskIds = taskData.map((t: Record<string, unknown>) => t.id as string)
+      const { data: assignData, error: assignErr } = await supabase
+        .from('task_assignments')
+        .select('*')
+        .in('task_id', taskIds)
+      if (assignErr) {
+        console.error('배정 로드 실패:', assignErr.message)
+      } else if (assignData) {
+        assignments = assignData.map(dbToAssignment)
+      }
+
+      // 4. task_details
+      const { data: detailData, error: detailErr } = await supabase
+        .from('task_details')
+        .select('*')
+        .in('task_id', taskIds)
+        .order('sort_order', { ascending: true })
+      if (detailErr) {
+        console.error('세부항목 로드 실패:', detailErr.message)
+      } else if (detailData) {
+        set({ taskDetails: detailData.map(dbToTaskDetail) })
+      }
+    }
+
+    // 데이터가 있는 경우에만 로컬 상태 교체 (없으면 폴백 유지)
+    const update: Partial<ResourceState> = {}
+    if (companies && companies.length > 0) update.companies = companies
+    if (members) update.members = members
+    if (assignments) update.assignments = assignments
+    if (Object.keys(update).length > 0) set(update as ResourceState)
+  },
+
+  addCompany: (company) => {
+    set((s) => ({ companies: [...s.companies, company] }))
+    const projectId = useProjectStore.getState().currentProject?.id
+    supabase.from('companies').insert({
+      id: company.id,
+      project_id: projectId,
+      name: company.name,
+      short_name: company.shortName,
+      color: company.color,
+    }).then(({ error }) => {
+      if (error) console.error('회사 추가 실패:', error.message)
+    })
+  },
+  updateCompany: (id, changes) => {
+    set((s) => ({
+      companies: s.companies.map((c) => c.id === id ? { ...c, ...changes } : c),
+    }))
+    const dbChanges: Record<string, unknown> = {}
+    if (changes.name !== undefined) dbChanges.name = changes.name
+    if (changes.shortName !== undefined) dbChanges.short_name = changes.shortName
+    if (changes.color !== undefined) dbChanges.color = changes.color
+    if (Object.keys(dbChanges).length > 0) {
+      supabase.from('companies').update(dbChanges).eq('id', id).then(({ error }) => {
+        if (error) console.error('회사 업데이트 실패:', error.message)
+      })
+    }
+  },
+  deleteCompany: (id) => {
+    set((s) => ({
+      companies: s.companies.filter((c) => c.id !== id),
+      members: s.members.filter((m) => m.company_id !== id),
+    }))
+    supabase.from('companies').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('회사 삭제 실패:', error.message)
+    })
+  },
+
+  addMember: (member) => {
+    set((s) => ({ members: [...s.members, member] }))
+    supabase.from('team_members').insert({
+      id: member.id,
+      company_id: member.company_id,
+      name: member.name,
+      email: member.email || null,
+      role: member.role || null,
+      phone: member.phone || null,
+    }).then(({ error }) => {
+      if (error) console.error('팀원 추가 실패:', error.message)
+    })
+  },
+  updateMember: (id, changes) => {
+    set((s) => ({
+      members: s.members.map((m) => m.id === id ? { ...m, ...changes } : m),
+    }))
+    const dbChanges: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(changes)) {
+      dbChanges[key] = value ?? null
+    }
+    if (Object.keys(dbChanges).length > 0) {
+      supabase.from('team_members').update(dbChanges).eq('id', id).then(({ error }) => {
+        if (error) console.error('팀원 업데이트 실패:', error.message)
+      })
+    }
+  },
+  deleteMember: (id) => {
+    set((s) => ({
+      members: s.members.filter((m) => m.id !== id),
+      assignments: s.assignments.filter((a) => a.member_id !== id),
+    }))
+    supabase.from('team_members').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('팀원 삭제 실패:', error.message)
+    })
+  },
 
   addAssignment: (assignment) => {
     set((s) => ({ assignments: [...s.assignments, assignment] }))
@@ -129,11 +307,35 @@ export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
       parentTaskName: task?.task_name,
       details: `[${task?.task_name || ''}]에 ${member?.name || ''} 배정`,
     })
+    supabase.from('task_assignments').insert({
+      id: assignment.id,
+      task_id: assignment.task_id,
+      member_id: assignment.member_id,
+      allocation_percent: assignment.allocation_percent,
+    }).then(({ error }) => {
+      if (error) console.error('배정 추가 실패:', error.message)
+    })
   },
-  updateAssignment: (id, changes) => set((s) => ({
-    assignments: s.assignments.map((a) => a.id === id ? { ...a, ...changes } : a),
-  })),
-  removeAssignment: (id) => set((s) => ({ assignments: s.assignments.filter((a) => a.id !== id) })),
+  updateAssignment: (id, changes) => {
+    set((s) => ({
+      assignments: s.assignments.map((a) => a.id === id ? { ...a, ...changes } : a),
+    }))
+    const dbChanges: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(changes)) {
+      dbChanges[key] = value ?? null
+    }
+    if (Object.keys(dbChanges).length > 0) {
+      supabase.from('task_assignments').update(dbChanges).eq('id', id).then(({ error }) => {
+        if (error) console.error('배정 업데이트 실패:', error.message)
+      })
+    }
+  },
+  removeAssignment: (id) => {
+    set((s) => ({ assignments: s.assignments.filter((a) => a.id !== id) }))
+    supabase.from('task_assignments').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('배정 삭제 실패:', error.message)
+    })
+  },
   getTaskAssignments: (taskId) => get().assignments.filter((a) => a.task_id === taskId),
 
   addTaskDetail: (detail) => {
@@ -146,6 +348,18 @@ export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
       targetName: detail.title,
       parentTaskName: task?.task_name,
       details: `[${task?.task_name || ''}]에 세부항목 '${detail.title}' 등록`,
+    })
+    supabase.from('task_details').insert({
+      id: detail.id,
+      task_id: detail.task_id,
+      sort_order: detail.sort_order,
+      title: detail.title,
+      description: detail.description || null,
+      status: detail.status,
+      assignee_ids: detail.assignee_ids || [],
+      due_date: detail.due_date || null,
+    }).then(({ error }) => {
+      if (error) console.error('세부항목 추가 실패:', error.message)
     })
   },
 
@@ -169,6 +383,19 @@ export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
     set((s) => ({
       taskDetails: s.taskDetails.map((d) => d.id === id ? { ...d, ...changes, ...autoFields } : d),
     }))
+    // 서버 업데이트
+    const dbChanges: Record<string, unknown> = {}
+    if (changes.title !== undefined) dbChanges.title = changes.title
+    if (changes.description !== undefined) dbChanges.description = changes.description || null
+    if (changes.status !== undefined) dbChanges.status = changes.status
+    if (changes.assignee_ids !== undefined) dbChanges.assignee_ids = changes.assignee_ids || []
+    if (changes.due_date !== undefined) dbChanges.due_date = changes.due_date || null
+    if (changes.sort_order !== undefined) dbChanges.sort_order = changes.sort_order
+    if (Object.keys(dbChanges).length > 0) {
+      supabase.from('task_details').update(dbChanges).eq('id', id).then(({ error }) => {
+        if (error) console.error('세부항목 업데이트 실패:', error.message)
+      })
+    }
     if (before && changes.status && changes.status !== before.status) {
       const statusLabel: Record<string, string> = { todo: '대기', in_progress: '진행중', done: '완료' }
       const task = useTaskStore.getState().tasks.find((t) => t.id === before.task_id)
@@ -197,6 +424,9 @@ export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
         details: `세부항목 '${detail.title}' 삭제`,
       })
     }
+    supabase.from('task_details').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('세부항목 삭제 실패:', error.message)
+    })
   },
   getTaskDetails: (taskId) => get().taskDetails.filter((d) => d.task_id === taskId),
 
@@ -287,20 +517,6 @@ export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
         parentTaskName: task?.task_name,
         details: `코멘트 삭제`,
       })
-    }
-  },
-}), {
-  name: 'xlgantt-resources',
-  version: 1,
-  merge: (persisted: unknown, current: ResourceState) => {
-    const p = persisted as Partial<ResourceState> | undefined
-    if (!p) return current
-    return {
-      ...current,
-      companies: p.companies?.length ? p.companies : current.companies,
-      members: p.members?.length ? p.members : current.members,
-      assignments: p.assignments || current.assignments,
-      taskDetails: p.taskDetails || current.taskDetails,
     }
   },
 }))

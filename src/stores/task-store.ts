@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Task, Dependency, CalendarType } from '@/lib/types'
+import type { Task, Dependency, CalendarType, DependencyType } from '@/lib/types'
 import { countWorkingDays } from '@/lib/calendar-calc'
 import { parseISO } from 'date-fns'
 import { useUndoStore } from '@/stores/undo-store'
@@ -8,6 +8,7 @@ import { useCalendarStore } from '@/stores/calendar-store'
 import { useActivityStore } from '@/stores/activity-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
+import { supabase } from '@/lib/supabase'
 
 function logTaskActivity(params: {
   action: 'create' | 'update' | 'delete' | 'complete' | 'status_change'
@@ -89,12 +90,107 @@ function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
   return rollupGroupDates(updated, parentTask.id)
 }
 
+/** DB row → 로컬 Task 변환 */
+function dbToTask(row: Record<string, unknown>): Task {
+  return {
+    id: row.id as string,
+    project_id: row.project_id as string,
+    sort_order: (row.sort_order as number) ?? 0,
+    wbs_code: (row.wbs_code as string) || '',
+    wbs_level: (row.wbs_level as number) ?? 1,
+    is_group: (row.is_group as boolean) ?? false,
+    task_name: (row.task_name as string) || '',
+    remarks: (row.remarks as string) || undefined,
+    planned_start: (row.planned_start as string) || undefined,
+    planned_end: (row.planned_end as string) || undefined,
+    actual_start: (row.actual_start as string) || undefined,
+    actual_end: (row.actual_end as string) || undefined,
+    total_workload: row.total_workload != null ? Number(row.total_workload) : undefined,
+    planned_workload: row.planned_workload != null ? Number(row.planned_workload) : undefined,
+    actual_workload: row.actual_workload != null ? Number(row.actual_workload) : undefined,
+    total_duration: row.total_duration != null ? Number(row.total_duration) : undefined,
+    planned_duration: row.planned_duration != null ? Number(row.planned_duration) : undefined,
+    actual_duration: row.actual_duration != null ? Number(row.actual_duration) : undefined,
+    calendar_type: (row.calendar_type as CalendarType) || 'STD',
+    resource_count: row.resource_count != null ? Number(row.resource_count) : undefined,
+    deliverables: (row.deliverables as string) || undefined,
+    planned_progress: Number(row.planned_progress ?? 0),
+    actual_progress: Number(row.actual_progress ?? 0),
+    is_milestone: (row.is_milestone as boolean) ?? false,
+    parent_id: (row.parent_id as string) || undefined,
+    is_collapsed: (row.is_collapsed as boolean) ?? false,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  }
+}
+
+/** 로컬 Task → DB insert/update용 객체 */
+function taskToDb(t: Task): Record<string, unknown> {
+  return {
+    id: t.id,
+    project_id: t.project_id,
+    sort_order: t.sort_order,
+    wbs_code: t.wbs_code,
+    wbs_level: t.wbs_level,
+    is_group: t.is_group,
+    task_name: t.task_name,
+    remarks: t.remarks || null,
+    planned_start: t.planned_start || null,
+    planned_end: t.planned_end || null,
+    actual_start: t.actual_start || null,
+    actual_end: t.actual_end || null,
+    total_workload: t.total_workload ?? null,
+    planned_workload: t.planned_workload ?? null,
+    actual_workload: t.actual_workload ?? null,
+    total_duration: t.total_duration ?? null,
+    planned_duration: t.planned_duration ?? null,
+    actual_duration: t.actual_duration ?? null,
+    calendar_type: t.calendar_type,
+    resource_count: t.resource_count ?? null,
+    deliverables: t.deliverables || null,
+    planned_progress: t.planned_progress,
+    actual_progress: t.actual_progress,
+    is_milestone: t.is_milestone,
+    parent_id: t.parent_id || null,
+    is_collapsed: t.is_collapsed,
+  }
+}
+
+/** DB row → 로컬 Dependency 변환 */
+function dbToDep(row: Record<string, unknown>): Dependency {
+  return {
+    id: row.id as string,
+    project_id: row.project_id as string,
+    predecessor_id: row.predecessor_id as string,
+    successor_id: row.successor_id as string,
+    dep_type: ((row.dep_type as number) ?? 1) as DependencyType,
+    lag_days: (row.lag_days as number) ?? 0,
+    created_at: row.created_at as string,
+  }
+}
+
+/** 로컬 Dependency → DB insert용 객체 */
+function depToDb(d: Dependency): Record<string, unknown> {
+  return {
+    id: d.id,
+    project_id: d.project_id,
+    predecessor_id: d.predecessor_id,
+    successor_id: d.successor_id,
+    dep_type: d.dep_type,
+    lag_days: d.lag_days,
+  }
+}
+
 interface TaskState {
   tasks: Task[]
   dependencies: Dependency[]
   selectedTaskIds: Set<string>
   editingCell: { taskId: string; field: string } | null
   isLoading: boolean
+
+  // Load from Supabase
+  loadTasks: (projectId: string) => Promise<void>
+  loadDependencies: (projectId: string) => Promise<void>
 
   // Task CRUD
   setTasks: (tasks: Task[]) => void
@@ -131,12 +227,41 @@ function pushCurrentSnapshot() {
   useUndoStore.getState().pushSnapshot({ tasks, dependencies })
 }
 
-export const useTaskStore = create<TaskState>((set) => ({
+export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   dependencies: [],
   selectedTaskIds: new Set(),
   editingCell: null,
   isLoading: false,
+
+  loadTasks: async (projectId) => {
+    set({ isLoading: true })
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('sort_order', { ascending: true })
+    if (error) {
+      console.error('작업 로드 실패:', error.message)
+    } else if (data) {
+      const tasks = data.map(dbToTask)
+      // setTasks를 통해 duration 계산 및 롤업 수행
+      get().setTasks(tasks)
+    }
+    set({ isLoading: false })
+  },
+
+  loadDependencies: async (projectId) => {
+    const { data, error } = await supabase
+      .from('dependencies')
+      .select('*')
+      .eq('project_id', projectId)
+    if (error) {
+      console.error('의존관계 로드 실패:', error.message)
+    } else if (data) {
+      set({ dependencies: data.map(dbToDep) })
+    }
+  },
 
   setTasks: (inTasks) => {
     // 기간 자동 계산
@@ -173,6 +298,7 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   addTask: (task) => {
     pushCurrentSnapshot()
+    // 낙관적 업데이트
     set((state) => ({ tasks: [...state.tasks, task] }))
     logTaskActivity({
       action: 'create',
@@ -180,6 +306,10 @@ export const useTaskStore = create<TaskState>((set) => ({
       targetId: task.id,
       targetName: task.task_name,
       details: `작업 '${task.task_name}' 추가`,
+    })
+    // 서버 저장 (비동기)
+    supabase.from('tasks').insert(taskToDb(task)).then(({ error }) => {
+      if (error) console.error('작업 추가 실패:', error.message)
     })
   },
 
@@ -223,6 +353,14 @@ export const useTaskStore = create<TaskState>((set) => ({
         details: `진척률 ${beforeTask.actual_progress ?? 0}% → ${changes.actual_progress}%`,
       })
     }
+    // 서버 업데이트 (비동기) - 변경된 필드만 전송
+    const dbChanges: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(changes)) {
+      dbChanges[key] = value ?? null
+    }
+    supabase.from('tasks').update(dbChanges).eq('id', taskId).then(({ error }) => {
+      if (error) console.error('작업 업데이트 실패:', error.message)
+    })
   },
 
   deleteTask: (taskId) => {
@@ -243,6 +381,10 @@ export const useTaskStore = create<TaskState>((set) => ({
         details: `작업 '${task.task_name}' 삭제`,
       })
     }
+    // 서버 삭제 (비동기)
+    supabase.from('tasks').delete().eq('id', taskId).then(({ error }) => {
+      if (error) console.error('작업 삭제 실패:', error.message)
+    })
   },
 
   toggleCollapse: (taskId) =>
@@ -259,6 +401,10 @@ export const useTaskStore = create<TaskState>((set) => ({
     set((state) => ({
       dependencies: [...state.dependencies, dep],
     }))
+    // 서버 저장 (비동기)
+    supabase.from('dependencies').insert(depToDb(dep)).then(({ error }) => {
+      if (error) console.error('의존관계 추가 실패:', error.message)
+    })
   },
 
   removeDependency: (depId) => {
@@ -266,6 +412,10 @@ export const useTaskStore = create<TaskState>((set) => ({
     set((state) => ({
       dependencies: state.dependencies.filter((d) => d.id !== depId),
     }))
+    // 서버 삭제 (비동기)
+    supabase.from('dependencies').delete().eq('id', depId).then(({ error }) => {
+      if (error) console.error('의존관계 삭제 실패:', error.message)
+    })
   },
 
   reorderTask: (taskId, targetIndex, targetParentId) => {
@@ -325,6 +475,23 @@ export const useTaskStore = create<TaskState>((set) => ({
 
       // Recalculate WBS codes
       tasks = recalculateWBSCodes(tasks)
+
+      // 서버에 sort_order, wbs_code, wbs_level, parent_id 일괄 업데이트 (비동기)
+      Promise.all(
+        tasks.map((t) =>
+          supabase.from('tasks').update({
+            sort_order: t.sort_order,
+            wbs_code: t.wbs_code,
+            wbs_level: t.wbs_level,
+            parent_id: t.parent_id || null,
+          }).eq('id', t.id)
+        )
+      ).then((results) => {
+        const failed = results.filter((r) => r.error)
+        if (failed.length > 0) {
+          console.error('작업 순서 업데이트 실패:', failed.length, '건')
+        }
+      })
 
       return { tasks }
     })

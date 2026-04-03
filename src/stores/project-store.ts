@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Project, ColorTheme } from '@/lib/types'
 import { THEME_PRESETS } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
 
 export type ProjectRole = 'owner' | 'pm' | 'editor' | 'viewer'
 
@@ -18,12 +19,13 @@ interface ProjectState {
   isLoading: boolean
   projectMembers: ProjectMember[]  // 프로젝트별 멤버/역할
 
+  loadProjects: () => Promise<void>
   setProjects: (projects: Project[]) => void
-  addProject: (project: Project) => void
-  deleteProject: (id: string) => void
+  addProject: (project: Project) => Promise<void>
+  deleteProject: (id: string) => Promise<void>
   switchProject: (id: string) => void
   setProject: (project: Project) => void
-  updateProject: (changes: Partial<Project>) => void
+  updateProject: (changes: Partial<Project>) => Promise<void>
   setTheme: (themeId: number) => void
   setLoading: (loading: boolean) => void
 
@@ -80,6 +82,40 @@ const INITIAL_PROJECTS: Project[] = [
   },
 ]
 
+/** DB row → 로컬 Project 변환 */
+function dbToProject(row: Record<string, unknown>): Project {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: (row.description as string) || undefined,
+    start_date: row.start_date as string,
+    end_date: row.end_date as string,
+    owner_id: row.owner_id as string,
+    theme_id: (row.theme_id as number) ?? 0,
+    language: (row.language as 'ko' | 'en') || 'ko',
+    zoom_level: (row.zoom_level as 1 | 2 | 3) ?? 2,
+    status_date: (row.status_date as string) || undefined,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  }
+}
+
+/** 로컬 Project → DB insert/update용 객체 */
+function projectToDb(p: Project): Record<string, unknown> {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description || null,
+    start_date: p.start_date,
+    end_date: p.end_date,
+    owner_id: p.owner_id,
+    theme_id: p.theme_id,
+    language: p.language,
+    zoom_level: p.zoom_level,
+    status_date: p.status_date || null,
+  }
+}
+
 export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
   projects: INITIAL_PROJECTS,
   currentProject: null,
@@ -87,18 +123,48 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
   isLoading: false,
   projectMembers: [] as ProjectMember[],
 
+  loadProjects: async () => {
+    set({ isLoading: true })
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: true })
+    if (error) {
+      console.error('프로젝트 목록 로드 실패:', error.message)
+      // 폴백: INITIAL_PROJECTS 유지
+    } else if (data && data.length > 0) {
+      set({ projects: data.map(dbToProject) })
+    }
+    // data가 빈 배열인 경우도 INITIAL_PROJECTS 폴백 유지
+    set({ isLoading: false })
+  },
+
   setProjects: (projects) => set({ projects }),
 
-  addProject: (project) =>
+  addProject: async (project) => {
+    // 낙관적 업데이트
     set((state) => ({
       projects: [...state.projects, project],
-    })),
+    }))
+    // 서버 저장
+    const { error } = await supabase.from('projects').insert(projectToDb(project))
+    if (error) {
+      console.error('프로젝트 추가 실패:', error.message)
+    }
+  },
 
-  deleteProject: (id) =>
+  deleteProject: async (id) => {
+    // 낙관적 업데이트
     set((state) => ({
       projects: state.projects.filter((p) => p.id !== id),
       currentProject: state.currentProject?.id === id ? null : state.currentProject,
-    })),
+    }))
+    // 서버 삭제
+    const { error } = await supabase.from('projects').delete().eq('id', id)
+    if (error) {
+      console.error('프로젝트 삭제 실패:', error.message)
+    }
+  },
 
   switchProject: (id) => {
     const project = get().projects.find((p) => p.id === id)
@@ -122,17 +188,26 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
       }
     }),
 
-  updateProject: (changes) =>
-    set((state) => {
-      if (!state.currentProject) return {}
-      const updated = { ...state.currentProject, ...changes }
-      return {
-        currentProject: updated,
-        projects: state.projects.map((p) =>
-          p.id === updated.id ? updated : p
-        ),
-      }
-    }),
+  updateProject: async (changes) => {
+    const currentProject = get().currentProject
+    if (!currentProject) return
+    const updated = { ...currentProject, ...changes }
+    // 낙관적 업데이트
+    set((state) => ({
+      currentProject: updated,
+      projects: state.projects.map((p) =>
+        p.id === updated.id ? updated : p
+      ),
+    }))
+    // 서버 업데이트
+    const { error } = await supabase
+      .from('projects')
+      .update(projectToDb(updated))
+      .eq('id', updated.id)
+    if (error) {
+      console.error('프로젝트 업데이트 실패:', error.message)
+    }
+  },
 
   setTheme: (themeId) =>
     set({ theme: THEME_PRESETS[themeId] || THEME_PRESETS[0] }),
