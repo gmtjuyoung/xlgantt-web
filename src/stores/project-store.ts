@@ -215,19 +215,37 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
 
   // 프로젝트 멤버 관리
-  addProjectMember: (member) => set((s) => ({
-    projectMembers: [...s.projectMembers.filter((m) => !(m.projectId === member.projectId && m.userId === member.userId)), member],
-  })),
+  addProjectMember: (member) => {
+    set((s) => ({
+      projectMembers: [...s.projectMembers.filter((m) => !(m.projectId === member.projectId && m.userId === member.userId)), member],
+    }))
+    supabase.from('project_members').upsert({
+      project_id: member.projectId,
+      user_id: member.userId,
+      role: member.role === 'pm' ? 'editor' : member.role, // DB는 owner/editor/viewer만
+    }).then(({ error }) => {
+      if (error) console.error('프로젝트 멤버 추가 실패:', error.message)
+    })
+  },
 
-  removeProjectMember: (projectId, userId) => set((s) => ({
-    projectMembers: s.projectMembers.filter((m) => !(m.projectId === projectId && m.userId === userId)),
-  })),
+  removeProjectMember: (projectId, userId) => {
+    set((s) => ({
+      projectMembers: s.projectMembers.filter((m) => !(m.projectId === projectId && m.userId === userId)),
+    }))
+    supabase.from('project_members').delete().eq('project_id', projectId).eq('user_id', userId)
+      .then(({ error }) => { if (error) console.error('프로젝트 멤버 삭제 실패:', error.message) })
+  },
 
-  updateProjectMemberRole: (projectId, userId, role) => set((s) => ({
-    projectMembers: s.projectMembers.map((m) =>
-      m.projectId === projectId && m.userId === userId ? { ...m, role } : m
-    ),
-  })),
+  updateProjectMemberRole: (projectId, userId, role) => {
+    set((s) => ({
+      projectMembers: s.projectMembers.map((m) =>
+        m.projectId === projectId && m.userId === userId ? { ...m, role } : m
+      ),
+    }))
+    supabase.from('project_members').update({ role: role === 'pm' ? 'editor' : role })
+      .eq('project_id', projectId).eq('user_id', userId)
+      .then(({ error }) => { if (error) console.error('프로젝트 멤버 역할 변경 실패:', error.message) })
+  },
 
   getProjectMembers: (projectId) => get().projectMembers.filter((m) => m.projectId === projectId),
 
