@@ -219,6 +219,9 @@ interface TaskState {
 
   /** Undo/Redo 복원 전용 - 스냅샷 저장 없이 상태 교체 */
   _restoreFromSnapshot: (tasks: Task[], dependencies: Dependency[]) => void
+
+  /** 자동 계산 전용 - undo 스냅샷 없이 작업 업데이트 (DB 저장은 수행) */
+  _updateTaskSilent: (taskId: string, changes: Partial<Task>) => void
 }
 
 /** 현재 tasks/dependencies 스냅샷을 undo 스택에 저장 */
@@ -519,4 +522,27 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   _restoreFromSnapshot: (tasks, dependencies) =>
     set({ tasks, dependencies }),
+
+  _updateTaskSilent: (taskId, changes) => {
+    set((state) => {
+      let tasks = state.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        return { ...t, ...changes }
+      })
+      // 그룹 롤업 (작업량 변경 시)
+      const changedTask = tasks.find((t) => t.id === taskId)
+      if (changedTask && !changedTask.is_group && changes.total_workload !== undefined) {
+        tasks = rollupGroupDates(tasks, taskId)
+      }
+      return { tasks }
+    })
+    // DB 저장 (비동기)
+    const dbChanges: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(changes)) {
+      dbChanges[key] = value ?? null
+    }
+    supabase.from('tasks').update(dbChanges).eq('id', taskId).then(({ error }) => {
+      if (error) console.error('작업 자동 업데이트 실패:', error.message)
+    })
+  },
 }))

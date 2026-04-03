@@ -269,9 +269,13 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
     const value = (task as unknown as Record<string, unknown>)[col.id]
     // 그룹 작업: 읽기전용 필드
     const groupReadOnlyFields = ['planned_start', 'planned_end', 'total_duration', 'total_workload']
+    // 세부항목 있는 작업: 진척률/작업량 자동 계산이므로 읽기전용
+    const hasTaskDetails = detailCount !== null
+    const autoCalcReadOnlyFields = hasTaskDetails ? ['total_workload', 'actual_progress'] : []
     const isReadOnly = col.id === 'total_duration' || col.id === 'wbs_code' || col.id === 'wbs_level'
       || (task.is_group && groupReadOnlyFields.includes(col.id))
       || (col.readOnlyForGroup && task.is_group)
+      || autoCalcReadOnlyFields.includes(col.id)
 
     // 셀 타입 결정
     const cellType: 'text' | 'date' | 'number' = (() => {

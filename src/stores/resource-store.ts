@@ -120,6 +120,22 @@ interface ResourceState {
   deleteComment: (detailId: string, commentId: string) => void
 }
 
+/** 세부항목 기반 진척률/작업량 자동 계산 (B방식) */
+function syncTaskProgress(taskId: string, taskDetails: TaskDetail[]) {
+  const details = taskDetails.filter((d) => d.task_id === taskId)
+  if (details.length === 0) return // 세부항목 없으면 수동 모드 유지
+
+  const doneCount = details.filter((d) => d.status === 'done').length
+  const progress = doneCount / details.length
+  const workload = details.length // 1 세부항목 = 1 M/D
+
+  // undo 스냅샷 없이 자동 업데이트
+  useTaskStore.getState()._updateTaskSilent(taskId, {
+    actual_progress: progress,
+    total_workload: workload,
+  })
+}
+
 // 샘플 데이터 제거 - DB가 단일 진실 소스
 
 export const useResourceStore = create<ResourceState>()((set, get) => ({
@@ -195,6 +211,13 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
     // task가 없어서 taskDetails 쿼리가 안 돈 경우 빈 배열로
     if (!taskData || taskData.length === 0) {
       set({ taskDetails: [] })
+    }
+
+    // 세부항목이 있는 작업들의 진척률/작업량 자동 동기화
+    const allDetails = get().taskDetails
+    const taskIdsWithDetails = [...new Set(allDetails.map((d) => d.task_id))]
+    for (const tid of taskIdsWithDetails) {
+      syncTaskProgress(tid, allDetails)
     }
   },
 
@@ -339,6 +362,8 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
     }).then(({ error }) => {
       if (error) console.error('세부항목 추가 실패:', error.message)
     })
+    // 세부항목 기반 진척률/작업량 자동 재계산
+    syncTaskProgress(detail.task_id, get().taskDetails)
   },
 
   updateTaskDetail: (id, changes) => {
@@ -386,6 +411,10 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
         details: `상태: ${statusLabel[before.status] || before.status} → ${statusLabel[changes.status] || changes.status}`,
       })
     }
+    // 세부항목 기반 진척률/작업량 자동 재계산
+    if (before) {
+      syncTaskProgress(before.task_id, get().taskDetails)
+    }
   },
 
   deleteTaskDetail: (id) => {
@@ -401,6 +430,8 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
         parentTaskName: task?.task_name,
         details: `세부항목 '${detail.title}' 삭제`,
       })
+      // 세부항목 기반 진척률/작업량 자동 재계산
+      syncTaskProgress(detail.task_id, get().taskDetails)
     }
     supabase.from('task_details').delete().eq('id', id).then(({ error }) => {
       if (error) console.error('세부항목 삭제 실패:', error.message)

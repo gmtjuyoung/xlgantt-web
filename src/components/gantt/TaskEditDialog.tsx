@@ -16,7 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useTaskStore } from '@/stores/task-store'
 import { useResourceStore } from '@/stores/resource-store'
-import type { DependencyType } from '@/lib/types'
+import type { Task, DependencyType } from '@/lib/types'
 import { DEP_TYPE_LABELS } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { MemberPicker } from '@/components/common/MemberPicker'
@@ -141,6 +141,8 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
     return taskDetails.filter((d) => d.task_id === taskId).sort((a, b) => a.sort_order - b.sort_order)
   }, [taskId, taskDetails])
 
+  const hasDetails = currentDetails.length > 0
+
   const detailProgress = useMemo(() => {
     if (currentDetails.length === 0) return null
     const done = currentDetails.filter((d) => d.status === 'done').length
@@ -154,26 +156,27 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
 
   const handleDetailStatusSet = (detailId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
     updateTaskDetail(detailId, { status: newStatus })
-    const updated = currentDetails.map((d) => d.id === detailId ? { ...d, status: newStatus } : d)
-    const doneCount = updated.filter((d) => d.status === 'done').length
-    const newProgress = Math.round((doneCount / updated.length) * 100)
-    setActualProgress(String(newProgress))
+    // 진척률은 resource-store의 syncTaskProgress가 자동 계산하므로 수동 설정 불필요
   }
 
   const handleSave = () => {
     if (!taskId) return
-    updateTask(taskId, {
+    const changes: Partial<Task> = {
       task_name: taskName,
       planned_start: plannedStart || undefined,
       planned_end: isMilestone && plannedStart ? plannedStart : (plannedEnd || undefined),
       actual_start: actualStart || undefined,
       actual_end: actualEnd || undefined,
-      total_workload: totalWorkload ? parseFloat(totalWorkload) : undefined,
-      actual_progress: actualProgress ? parseFloat(actualProgress) / 100 : 0,
       remarks: remarks || undefined,
       calendar_type: calendarType as 'STD' | 'UD1' | 'UD2',
       is_milestone: isMilestone,
-    })
+    }
+    // 세부항목이 있으면 진척률/작업량은 자동 계산이므로 저장에서 제외
+    if (!hasDetails) {
+      changes.total_workload = totalWorkload ? parseFloat(totalWorkload) : undefined
+      changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+    }
+    updateTask(taskId, changes)
     onClose()
   }
 
@@ -270,11 +273,13 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    <Field label="작업량 (M/D)">
-                      <Input type="number" step="0.1" value={totalWorkload} onChange={(e) => setTotalWorkload(e.target.value)} className={fieldCls} disabled={isGroup} />
+                    <Field label={hasDetails ? '작업량 (자동)' : '작업량 (M/D)'}>
+                      <Input type="number" step="0.1" value={hasDetails ? currentDetails.length : totalWorkload} onChange={(e) => setTotalWorkload(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
+                      {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
                     </Field>
-                    <Field label="진척률 (%)">
-                      <Input type="number" min="0" max="100" value={actualProgress} onChange={(e) => setActualProgress(e.target.value)} className={fieldCls} disabled={isGroup} />
+                    <Field label={hasDetails ? '진척률 (자동)' : '진척률 (%)'}>
+                      <Input type="number" min="0" max="100" value={hasDetails ? (detailProgress ?? 0) : actualProgress} onChange={(e) => setActualProgress(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
+                      {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
                     </Field>
                     <Field label="비고">
                       <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="h-7 text-xs" placeholder="메모" />
