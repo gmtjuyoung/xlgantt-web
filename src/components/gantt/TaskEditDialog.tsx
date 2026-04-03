@@ -82,6 +82,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   const [newSuccId, setNewSuccId] = useState('')
   const [newSuccType, setNewSuccType] = useState<DependencyType>(1)
   const [newAssignMemberIds, setNewAssignMemberIds] = useState<string[]>([])
+  const [hideCompletedDetails, setHideCompletedDetails] = useState(false)
   const [newAssignPercent, setNewAssignPercent] = useState('100')
   const [newDetailTitle, setNewDetailTitle] = useState('')
   const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set())
@@ -437,6 +438,10 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                   <span className="text-[11px] font-medium text-primary tabular-nums">{detailProgress}%</span>
                 </div>
               )}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0">
+                <input type="checkbox" checked={hideCompletedDetails} onChange={(e) => setHideCompletedDetails(e.target.checked)} className="w-3 h-3 rounded accent-primary" />
+                <span className="text-[11px] text-muted-foreground">완료 숨기기</span>
+              </label>
               <div className="flex-1" />
               <Input
                 placeholder="새 세부항목 제목..."
@@ -452,7 +457,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
 
             {/* 카드 목록 */}
             <div className="space-y-2">
-              {currentDetails.map((detail) => {
+              {currentDetails.filter((d) => !hideCompletedDetails || d.status !== 'done').map((detail) => {
                 const assignee = detail.assignee_id ? members.find(m => m.id === detail.assignee_id) : null
                 const isExpanded = expandedDetails.has(detail.id)
                 const accent = {
