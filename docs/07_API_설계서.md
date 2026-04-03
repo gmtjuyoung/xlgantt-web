@@ -42,10 +42,47 @@
 - /complete [카드제목] - 카드 완료 처리
 - /add [작업명] > [항목명] - 새 세부항목 추가
 
-## 3. 웹훅 이벤트
+## 3. 웹훅 시스템
+
+### 이벤트 목록
 - task.created / task.updated / task.deleted
-- detail.status_changed / detail.completed
-- assignment.created / comment.created
+- detail.created / detail.status_changed / detail.completed
+- assignment.created / assignment.deleted
+
+### 구독 관리 API
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | /api-webhook-subscriptions?project_id={id} | 구독 목록 |
+| POST | /api-webhook-subscriptions | 구독 생성 |
+| PATCH | /api-webhook-subscriptions?id={id} | 구독 수정 |
+| DELETE | /api-webhook-subscriptions?id={id} | 구독 삭제 |
+| POST | /api-webhook-subscriptions?action=test&id={id} | 테스트 발행 |
+
+### 디스패처 (내부 전용)
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | /api-webhook-dispatcher | 수동/테스트 웹훅 발행 |
+
+### 발행 방식
+- **방식 A 채택**: api-tasks, api-details Edge Function에서 CRUD 후 `_shared/webhook.ts`의 `dispatchWebhooks()` 직접 호출
+- Fire-and-forget 방식 (실패해도 원본 API 응답에 영향 없음)
+- HMAC-SHA256 서명 (`X-Webhook-Signature` 헤더)
+
+### 페이로드 형식
+```json
+{
+  "event": "task.created",
+  "timestamp": "2026-04-03T09:00:00.000Z",
+  "project_id": "uuid",
+  "data": { ... }
+}
+```
+
+### 서명 검증 (수신 측)
+```
+signature = HMAC-SHA256(secret, request_body)
+X-Webhook-Signature 헤더 값과 비교
+```
 
 ## 4. 구현 순서
 1. Phase 1: DB 마이그레이션 + 인증 미들웨어
