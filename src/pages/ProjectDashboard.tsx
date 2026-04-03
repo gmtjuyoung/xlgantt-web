@@ -126,7 +126,12 @@ export function ProjectDashboard() {
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6 -mr-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 flex-shrink-0"
-                    onClick={(e) => { e.stopPropagation(); deleteProject(p.id) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const input = prompt(`프로젝트를 삭제하려면 프로젝트 이름을 입력하세요:\n\n"${p.name}"`)
+                      if (input === p.name) deleteProject(p.id)
+                      else if (input !== null) alert('프로젝트 이름이 일치하지 않습니다.')
+                    }}
                   >
                     <Trash2 className="h-3 w-3 text-red-500" />
                   </Button>

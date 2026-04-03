@@ -120,40 +120,13 @@ interface ResourceState {
   deleteComment: (detailId: string, commentId: string) => void
 }
 
-// 샘플 회사 데이터
-const SAMPLE_COMPANIES: Company[] = [
-  { id: 'comp-001', name: '(주) 지엠티', shortName: 'GMT', color: '#3b82f6', created_at: new Date().toISOString() },
-  { id: 'comp-002', name: '삼성SDS', shortName: '삼성', color: '#1d4ed8', created_at: new Date().toISOString() },
-  { id: 'comp-003', name: '엘지CNS', shortName: 'LG', color: '#dc2626', created_at: new Date().toISOString() },
-]
-
-const SAMPLE_MEMBERS: TeamMember[] = [
-  { id: 'mem-001', company_id: 'comp-001', name: '홍길동', role: 'PM', email: 'hong@gmt.co.kr', created_at: new Date().toISOString() },
-  { id: 'mem-002', company_id: 'comp-001', name: '김철수', role: '개발자', email: 'kim@gmt.co.kr', created_at: new Date().toISOString() },
-  { id: 'mem-003', company_id: 'comp-001', name: '이영희', role: '디자이너', email: 'lee@gmt.co.kr', created_at: new Date().toISOString() },
-  { id: 'mem-004', company_id: 'comp-002', name: '박민수', role: 'SA', email: 'park@samsung.com', created_at: new Date().toISOString() },
-  { id: 'mem-005', company_id: 'comp-003', name: '정수진', role: 'QA', email: 'jung@lgcns.com', created_at: new Date().toISOString() },
-]
+// 샘플 데이터 제거 - DB가 단일 진실 소스
 
 export const useResourceStore = create<ResourceState>()((set, get) => ({
-  companies: SAMPLE_COMPANIES,
-  members: SAMPLE_MEMBERS,
-  assignments: [
-    { id: 'assign-001', task_id: 'task-002', member_id: 'mem-002', allocation_percent: 100 },
-    { id: 'assign-002', task_id: 'task-003', member_id: 'mem-002', allocation_percent: 50 },
-    { id: 'assign-003', task_id: 'task-008', member_id: 'mem-002', allocation_percent: 100 },
-    { id: 'assign-004', task_id: 'task-009', member_id: 'mem-002', allocation_percent: 80 },
-    { id: 'assign-005', task_id: 'task-002', member_id: 'mem-001', allocation_percent: 100 },
-    { id: 'assign-006', task_id: 'task-010', member_id: 'mem-003', allocation_percent: 100 },
-  ],
-  taskDetails: [
-    { id: 'detail-001', task_id: 'task-002', sort_order: 1000, title: 'DB 스키마 설계서 작성', status: 'done', assignee_id: 'mem-002', due_date: '2025-08-01', created_at: '2025-07-20T09:00:00Z' },
-    { id: 'detail-002', task_id: 'task-002', sort_order: 2000, title: '테이블 정의서 검토', status: 'in_progress', assignee_id: 'mem-002', due_date: '2025-08-05', created_at: '2025-07-22T09:00:00Z' },
-    { id: 'detail-003', task_id: 'task-003', sort_order: 1000, title: 'API 목록 정리', status: 'todo', assignee_id: 'mem-002', due_date: '2025-08-10', created_at: '2025-07-25T09:00:00Z' },
-    { id: 'detail-004', task_id: 'task-008', sort_order: 1000, title: '프론트엔드 컴포넌트 구조 설계', status: 'todo', assignee_id: 'mem-002', due_date: '2025-09-01', created_at: '2025-08-01T09:00:00Z' },
-    { id: 'detail-005', task_id: 'task-008', sort_order: 2000, title: '공통 유틸 함수 작성', status: 'todo', assignee_id: 'mem-002', created_at: '2025-08-01T09:00:00Z' },
-    { id: 'detail-006', task_id: 'task-009', sort_order: 1000, title: '단위 테스트 작성', status: 'todo', assignee_id: 'mem-002', due_date: '2025-09-15', created_at: '2025-08-05T09:00:00Z' },
-  ],
+  companies: [],
+  members: [],
+  assignments: [],
+  taskDetails: [],
 
   loadResources: async (projectId) => {
     // 1. companies (프로젝트에 직접 연결)
@@ -212,12 +185,17 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
       }
     }
 
-    // 데이터가 있는 경우에만 로컬 상태 교체 (없으면 폴백 유지)
-    const update: Partial<ResourceState> = {}
-    if (companies && companies.length > 0) update.companies = companies
-    if (members) update.members = members
-    if (assignments) update.assignments = assignments
-    if (Object.keys(update).length > 0) set(update as ResourceState)
+    // 서버 데이터로 교체 (비어있으면 빈 배열)
+    set({
+      companies: companies || [],
+      members: members || [],
+      assignments: assignments || [],
+      taskDetails: get().taskDetails, // taskDetails는 위에서 이미 set됨, 안 됐으면 유지
+    })
+    // task가 없어서 taskDetails 쿼리가 안 돈 경우 빈 배열로
+    if (!taskData || taskData.length === 0) {
+      set({ taskDetails: [] })
+    }
   },
 
   addCompany: (company) => {
