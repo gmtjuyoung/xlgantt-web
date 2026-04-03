@@ -1,113 +1,106 @@
 /**
  * XLGantt - Webhook Dispatcher Edge Function
  *
- * 내부 전용 엔드포인트: CRUD API에서 호출하여 웹훅을 발행합니다.
- * 외부에서 직접 호출하지 않고, api-tasks / api-details 등에서
- * _shared/webhook.ts의 dispatchWebhooks()를 직접 import하여 사용합니다.
- *
- * 이 Edge Function은 수동/테스트 발행용으로도 활용할 수 있습니다.
+ * 수동/테스트 웹훅 발행 전용 엔드포인트.
+ * 일반적으로 api-tasks / api-details에서 _shared/webhook.ts를
+ * 직접 import하여 자동 발행하므로, 이 엔드포인트는 디버깅/테스트용입니다.
  *
  * POST /api-webhook-dispatcher
  * Headers:
- *   Authorization: Bearer <service_role_key>
+ *   Authorization: Bearer <jwt_token> 또는 X-API-Key: <api_key>
  * Body:
  *   { "project_id": "...", "event": "task.created", "data": {...} }
  */
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, handleCors } from "../_shared/cors.ts";
-import { dispatchWebhooks, type WebhookEvent } from "../_shared/webhook.ts";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/cors.ts'
+import { authenticateRequest, checkProjectAccess } from '../_shared/auth.ts'
+import { dispatchWebhooks, type WebhookEvent } from '../_shared/webhook.ts'
 
 const VALID_EVENTS: WebhookEvent[] = [
-  "task.created",
-  "task.updated",
-  "task.deleted",
-  "detail.created",
-  "detail.status_changed",
-  "detail.completed",
-  "assignment.created",
-  "assignment.deleted",
-];
+  'task.created',
+  'task.updated',
+  'task.deleted',
+  'detail.created',
+  'detail.status_changed',
+  'detail.completed',
+  'assignment.created',
+  'assignment.deleted',
+]
 
-Deno.serve(async (req: Request) => {
-  // CORS preflight
-  const corsResponse = handleCors(req);
-  if (corsResponse) return corsResponse;
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
   // POST만 허용
-  if (req.method !== "POST") {
+  if (req.method !== 'POST') {
     return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+      JSON.stringify({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Only POST is allowed', status: 405 } }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 
   try {
-    // service_role 키로 인증 (내부 호출 전용)
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    const auth = await authenticateRequest(req)
+    if ('error' in auth) {
+      return new Response(JSON.stringify(auth), {
+        status: auth.error.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
-
-    const body = await req.json();
-    const { project_id, event, data } = body;
+    const { userId, supabase } = auth
+    const body = await req.json()
+    const { project_id, event, data } = body
 
     // 입력 검증
-    if (!project_id || typeof project_id !== "string") {
+    if (!project_id || typeof project_id !== 'string') {
       return new Response(
-        JSON.stringify({ error: "project_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+        JSON.stringify({ error: { code: 'VALIDATION_ERROR', message: 'project_id is required', status: 400 } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 프로젝트 owner 권한 확인
+    const access = await checkProjectAccess(supabase, userId, project_id, 'owner')
+    if (!access.allowed) {
+      return new Response(
+        JSON.stringify({ error: { code: 'FORBIDDEN', message: 'Owner role required for manual webhook dispatch', status: 403 } }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     if (!event || !VALID_EVENTS.includes(event as WebhookEvent)) {
       return new Response(
-        JSON.stringify({
-          error: `Invalid event. Valid events: ${VALID_EVENTS.join(", ")}`,
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+        JSON.stringify({ error: { code: 'VALIDATION_ERROR', message: `Invalid event. Valid: ${VALID_EVENTS.join(', ')}`, status: 400 } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    if (!data || typeof data !== "object") {
+    if (!data || typeof data !== 'object') {
       return new Response(
-        JSON.stringify({ error: "data object is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+        JSON.stringify({ error: { code: 'VALIDATION_ERROR', message: 'data object is required', status: 400 } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // 웹훅 발행 (fire-and-forget이지만, 이 엔드포인트에서는 결과 대기)
-    await dispatchWebhooks(
-      supabase,
-      project_id,
-      event as WebhookEvent,
-      data,
-    );
+    // 웹훅 발행 (이 엔드포인트에서는 결과 대기)
+    await dispatchWebhooks(supabase, project_id, event as WebhookEvent, data)
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Webhook event '${event}' dispatched for project ${project_id}`,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   } catch (err) {
-    console.error("[api-webhook-dispatcher] Error:", err);
+    console.error('[api-webhook-dispatcher] Error:', err)
     return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        message: err instanceof Error ? err.message : String(err),
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+      JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: (err as Error).message, status: 500 } }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
-});
+})

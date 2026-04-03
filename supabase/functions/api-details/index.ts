@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { authenticateRequest, checkProjectAccess } from '../_shared/auth.ts'
+import { dispatchWebhooks } from '../_shared/webhook.ts'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -157,6 +158,14 @@ serve(async (req) => {
         details: { title, task_id },
       })
 
+      // Webhook: fire-and-forget
+      dispatchWebhooks(supabase, projectId, 'detail.created', {
+        detail_id: data.id,
+        title: data.title,
+        task_id,
+        status: data.status,
+      }).catch(() => {})
+
       return new Response(
         JSON.stringify({ data }),
         { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -216,6 +225,13 @@ serve(async (req) => {
           details: { title: data.title, task_id: taskId },
         })
 
+        // Webhook: fire-and-forget
+        dispatchWebhooks(supabase, projectId, 'detail.completed', {
+          detail_id: detailId,
+          title: data.title,
+          task_id: taskId,
+        }).catch(() => {})
+
         return new Response(
           JSON.stringify({ data }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -251,6 +267,15 @@ serve(async (req) => {
           entity_id: detailId,
           details: { new_status: status, title: data.title },
         })
+
+        // Webhook: fire-and-forget
+        dispatchWebhooks(supabase, projectId, 'detail.status_changed', {
+          detail_id: detailId,
+          title: data.title,
+          task_id: taskId,
+          old_status: undefined,
+          new_status: status,
+        }).catch(() => {})
 
         return new Response(
           JSON.stringify({ data }),
