@@ -347,10 +347,14 @@ export function ResourceManager() {
               <div className="flex-[3] min-w-[300px]">
                 <label className="text-xs text-muted-foreground">등록회원</label>
                 <Select value={selectedUserId} onValueChange={(v) => v && setSelectedUserId(v)}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="회원 선택..." /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="회원 선택...">
+                      {selectedUserId ? (() => { const u = availableUsers.find(u => u.id === selectedUserId); return u ? `${u.name} (${u.email})` : '선택' })() : undefined}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     {availableUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id} className="text-xs">{u.name} ({u.email})</SelectItem>
+                      <SelectItem key={u.id} value={u.id} className="text-sm">{u.name} ({u.email})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
