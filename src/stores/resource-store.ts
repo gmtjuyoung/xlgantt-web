@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { Company, TeamMember, TaskAssignment, TaskDetail, TaskAttachment, TaskComment } from '@/lib/resource-types'
 import { useActivityStore } from '@/stores/activity-store'
 import { useAuthStore } from '@/stores/auth-store'
@@ -77,7 +78,7 @@ const SAMPLE_MEMBERS: TeamMember[] = [
   { id: 'mem-005', company_id: 'comp-003', name: '정수진', role: 'QA', email: 'jung@lgcns.com', created_at: new Date().toISOString() },
 ]
 
-export const useResourceStore = create<ResourceState>((set, get) => ({
+export const useResourceStore = create<ResourceState>()(persist((set, get) => ({
   companies: SAMPLE_COMPANIES,
   members: SAMPLE_MEMBERS,
   assignments: [
@@ -286,6 +287,20 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
         parentTaskName: task?.task_name,
         details: `코멘트 삭제`,
       })
+    }
+  },
+}), {
+  name: 'xlgantt-resources',
+  version: 1,
+  merge: (persisted: unknown, current: ResourceState) => {
+    const p = persisted as Partial<ResourceState> | undefined
+    if (!p) return current
+    return {
+      ...current,
+      companies: p.companies?.length ? p.companies : current.companies,
+      members: p.members?.length ? p.members : current.members,
+      assignments: p.assignments || current.assignments,
+      taskDetails: p.taskDetails || current.taskDetails,
     }
   },
 }))
