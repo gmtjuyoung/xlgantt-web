@@ -76,6 +76,7 @@ export function MemberTasksView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [editTaskId, setEditTaskId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [hideDone, setHideDone] = useState(false)
   const [cardDetailId, setCardDetailId] = useState<string | null>(null)
 
   const handleOpenTask = useCallback((taskId: string) => {
@@ -171,8 +172,9 @@ export function MemberTasksView() {
     for (const assign of memberAssigns) {
       const task = tasks.find((t) => t.id === assign.task_id && !t.is_group)
       if (task) {
+        if (hideDone && task.actual_progress >= 1) continue
         const details = taskDetails.filter((d) => d.task_id === task.id).sort((a, b) => a.sort_order - b.sort_order)
-        result.push({ task, assignment: assign, details })
+        result.push({ task, assignment: assign, details: hideDone ? details.filter((d) => d.status !== 'done') : details })
       }
     }
     result.sort((a, b) => {
@@ -181,7 +183,7 @@ export function MemberTasksView() {
       return aDate.localeCompare(bDate)
     })
     return result
-  }, [selectedMemberId, assignments, tasks, taskDetails])
+  }, [selectedMemberId, assignments, tasks, taskDetails, hideDone])
 
   const selectedMember = selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null
   const selectedMemberCompany = selectedMember ? companies.find((c) => c.id === selectedMember.company_id) : null
@@ -196,7 +198,7 @@ export function MemberTasksView() {
             <UserCheck className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-bold text-foreground">담당자별 업무</h2>
           </div>
-          <div className="flex gap-3 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
               담당자 {totalMembers}명
@@ -205,6 +207,10 @@ export function MemberTasksView() {
               <ClipboardList className="h-3 w-3" />
               배정 작업 {totalAssignedTasks}건
             </span>
+            <label className="flex items-center gap-1 cursor-pointer select-none ml-auto">
+              <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} className="w-3 h-3 rounded accent-primary" />
+              <span>완료 숨기기</span>
+            </label>
           </div>
         </div>
 

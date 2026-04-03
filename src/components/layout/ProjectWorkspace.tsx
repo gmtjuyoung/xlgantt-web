@@ -49,7 +49,7 @@ function MainContent() {
 
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
-  const { switchProject, currentProject, setProject } = useProjectStore()
+  const { switchProject, currentProject, setProject, loadProjectMembers } = useProjectStore()
   const { setTasks, setDependencies, loadTasks, loadDependencies } = useTaskStore()
   const { loadResources } = useResourceStore()
   const clearUndo = useUndoStore((s) => s.clear)
@@ -68,6 +68,7 @@ export function ProjectWorkspace() {
           loadTasks(projectId),
           loadDependencies(projectId),
           loadResources(projectId),
+          loadProjectMembers(projectId),
         ])
         // 서버에서 작업 데이터가 비어있고, 샘플 프로젝트인 경우 폴백
         const { tasks } = useTaskStore.getState()

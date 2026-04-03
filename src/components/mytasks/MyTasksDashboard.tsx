@@ -11,6 +11,8 @@ import {
   CalendarPlus,
   CalendarCheck2,
   ExternalLink,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { Input } from '@/components/ui/input'
@@ -22,10 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 import { useResourceStore } from '@/stores/resource-store'
 import { useTaskStore } from '@/stores/task-store'
 import { useProjectStore } from '@/stores/project-store'
+import type { CustomStatus } from '@/stores/project-store'
 import { TaskEditDialog } from '@/components/gantt/TaskEditDialog'
 import { CardDetailModal } from '@/components/mytasks/CardDetailModal'
 import { cn } from '@/lib/utils'
@@ -46,13 +50,15 @@ interface MyTaskCard {
 
 type MyCard = MyDetailCard | MyTaskCard
 
-const STATUS_LABELS: Record<string, string> = {
+const DEFAULT_STATUS_LABELS: Record<string, string> = {
   todo: '대기',
   in_progress: '진행중',
   done: '완료',
 }
 
-const STATUS_COLORS = {
+const DEFAULT_STATUS_COLORS: Record<string, {
+  bg: string; border: string; badge: string; headerText: string; headerDot: string
+}> = {
   todo: {
     bg: 'bg-card',
     border: 'border-l-amber-400',
@@ -76,11 +82,59 @@ const STATUS_COLORS = {
   },
 }
 
+// 커스텀 상태용 색상 매핑
+const CUSTOM_COLOR_MAP: Record<string, {
+  bg: string; border: string; badge: string; headerText: string; headerDot: string
+}> = {
+  purple: {
+    bg: 'bg-card', border: 'border-l-purple-400', badge: 'bg-purple-100 text-purple-700 border-purple-200',
+    headerText: 'text-purple-600', headerDot: 'bg-purple-400',
+  },
+  pink: {
+    bg: 'bg-card', border: 'border-l-pink-400', badge: 'bg-pink-100 text-pink-700 border-pink-200',
+    headerText: 'text-pink-600', headerDot: 'bg-pink-400',
+  },
+  orange: {
+    bg: 'bg-card', border: 'border-l-orange-400', badge: 'bg-orange-100 text-orange-700 border-orange-200',
+    headerText: 'text-orange-600', headerDot: 'bg-orange-400',
+  },
+  red: {
+    bg: 'bg-card', border: 'border-l-red-400', badge: 'bg-red-100 text-red-700 border-red-200',
+    headerText: 'text-red-600', headerDot: 'bg-red-400',
+  },
+  teal: {
+    bg: 'bg-card', border: 'border-l-teal-400', badge: 'bg-teal-100 text-teal-700 border-teal-200',
+    headerText: 'text-teal-600', headerDot: 'bg-teal-400',
+  },
+  indigo: {
+    bg: 'bg-card', border: 'border-l-indigo-400', badge: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    headerText: 'text-indigo-600', headerDot: 'bg-indigo-400',
+  },
+  cyan: {
+    bg: 'bg-card', border: 'border-l-cyan-400', badge: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+    headerText: 'text-cyan-600', headerDot: 'bg-cyan-400',
+  },
+}
+
+const AVAILABLE_COLORS = ['purple', 'pink', 'orange', 'red', 'teal', 'indigo', 'cyan']
+
+function getStatusColors(status: string, customStatuses: CustomStatus[]) {
+  if (DEFAULT_STATUS_COLORS[status]) return DEFAULT_STATUS_COLORS[status]
+  const custom = customStatuses.find((cs) => cs.id === status)
+  if (custom && CUSTOM_COLOR_MAP[custom.color]) return CUSTOM_COLOR_MAP[custom.color]
+  return CUSTOM_COLOR_MAP['purple'] // fallback
+}
+
 export function MyTasksDashboard() {
   const currentUser = useAuthStore((s) => s.currentUser)
   const { members, assignments, taskDetails, updateTaskDetail } = useResourceStore()
   const tasks = useTaskStore((s) => s.tasks)
   const statusDate = useProjectStore((s) => s.currentProject?.status_date)
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const customStatuses = useProjectStore((s) => s.customStatuses)
+  const addCustomStatus = useProjectStore((s) => s.addCustomStatus)
+  const removeCustomStatus = useProjectStore((s) => s.removeCustomStatus)
+  const projectMembers = useProjectStore((s) => s.projectMembers)
 
   const [expandedCards] = useState<Set<string>>(new Set())
   const [editTaskId, setEditTaskId] = useState<string | null>(null)
@@ -89,6 +143,56 @@ export function MyTasksDashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
+
+  // Drag & Drop state
+  const [dragCardId, setDragCardId] = useState<string | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+
+  // 커스텀 상태 추가 다이얼로그
+  const [showAddStatus, setShowAddStatus] = useState(false)
+  const [newStatusLabel, setNewStatusLabel] = useState('')
+  const [newStatusColor, setNewStatusColor] = useState('purple')
+
+  // 현재 프로젝트의 커스텀 상태
+  const projectCustomStatuses = useMemo(() => {
+    if (!currentProject) return []
+    return customStatuses.filter((cs) => cs.projectId === currentProject.id)
+  }, [customStatuses, currentProject])
+
+  // 전체 상태 목록 (기본 + 커스텀)
+  const allStatuses = useMemo(() => {
+    const base = [
+      { key: 'todo', label: '대기' },
+      { key: 'in_progress', label: '진행중' },
+    ]
+    // 커스텀 상태는 '진행중'과 '완료' 사이에 삽입
+    for (const cs of projectCustomStatuses) {
+      base.push({ key: cs.id, label: cs.label })
+    }
+    base.push({ key: 'done', label: '완료' })
+    return base
+  }, [projectCustomStatuses])
+
+  // 전체 상태 라벨 매핑
+  const allStatusLabels = useMemo(() => {
+    const labels: Record<string, string> = { ...DEFAULT_STATUS_LABELS }
+    for (const cs of projectCustomStatuses) {
+      labels[cs.id] = cs.label
+    }
+    return labels
+  }, [projectCustomStatuses])
+
+  // 현재 사용자가 PM/owner인지 확인
+  const canManageStatuses = useMemo(() => {
+    if (!currentUser || !currentProject) return false
+    // owner는 항상 가능
+    if (currentProject.owner_id === currentUser.id) return true
+    // pm/editor도 가능
+    const myRole = projectMembers.find(
+      (m) => m.projectId === currentProject.id && m.userId === currentUser.id
+    )?.role
+    return myRole === 'owner' || myRole === 'pm' || myRole === 'editor'
+  }, [currentUser, currentProject, projectMembers])
 
   // 현재 사용자에 매칭되는 멤버 찾기 (email 우선, name 폴백)
   const myMember = useMemo(() => {
@@ -170,26 +274,37 @@ export function MyTasksDashboard() {
     })
   }, [myCards, searchQuery, filterFrom, filterTo])
 
-  // 상태별 그룹핑
+  // 카드의 상태 키를 반환 (기본 3개 또는 커스텀 상태)
+  const getCardStatus = useCallback((card: MyCard): string => {
+    if (card.type === 'detail') {
+      return card.detail.status
+    }
+    const p = card.task.actual_progress
+    if (p >= 1) return 'done'
+    if (p > 0) return 'in_progress'
+    return 'todo'
+  }, [])
+
+  // 상태별 그룹핑 (커스텀 상태 포함)
   const grouped = useMemo(() => {
-    const result = { todo: [] as MyCard[], in_progress: [] as MyCard[], done: [] as MyCard[] }
+    const result: Record<string, MyCard[]> = {}
+    for (const s of allStatuses) {
+      result[s.key] = []
+    }
     for (const card of filteredCards) {
-      if (card.type === 'detail') {
-        result[card.detail.status].push(card)
+      const status = getCardStatus(card)
+      if (result[status]) {
+        result[status].push(card)
       } else {
-        const p = card.task.actual_progress
-        if (p >= 1) result.done.push(card)
-        else if (p > 0) result.in_progress.push(card)
-        else result.todo.push(card)
+        // 커스텀 상태가 삭제된 경우 → todo로 폴백
+        result['todo']?.push(card)
       }
     }
     return result
-  }, [filteredCards])
+  }, [filteredCards, allStatuses, getCardStatus])
 
   const total = filteredCards.length
-  const todoCount = grouped.todo.length
-  const inProgressCount = grouped.in_progress.length
-  const doneCount = grouped.done.length
+  const doneCount = grouped['done']?.length || 0
   const progressPercent = total > 0 ? Math.round((doneCount / total) * 100) : 0
 
   // 지연 판정
@@ -211,8 +326,8 @@ export function MyTasksDashboard() {
     [statusDate]
   )
 
-  const handleStatusChange = (detailId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
-    updateTaskDetail(detailId, { status: newStatus })
+  const handleStatusChange = (detailId: string, newStatus: string) => {
+    updateTaskDetail(detailId, { status: newStatus as 'todo' | 'in_progress' | 'done' })
   }
 
   const handleCheckboxClick = (detailId: string, currentStatus: string) => {
@@ -225,6 +340,70 @@ export function MyTasksDashboard() {
 
   const handleDescriptionChange = (detailId: string, description: string) => {
     updateTaskDetail(detailId, { description })
+  }
+
+  // ─── Drag & Drop handlers ───
+  const handleDragStart = (e: React.DragEvent, card: MyCard) => {
+    const cardId = card.type === 'detail' ? card.detail.id : `task-${card.task.id}`
+    setDragCardId(cardId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      cardId,
+      cardType: card.type,
+      detailId: card.type === 'detail' ? card.detail.id : null,
+      taskId: card.task.id,
+      currentStatus: getCardStatus(card),
+    }))
+    // 드래그 이미지 투명도는 CSS로 처리
+  }
+
+  const handleDragEnd = () => {
+    setDragCardId(null)
+    setDragOverColumn(null)
+  }
+
+  const handleColumnDragOver = (e: React.DragEvent, statusKey: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverColumn(statusKey)
+  }
+
+  const handleColumnDragLeave = (e: React.DragEvent) => {
+    // relatedTarget이 컬럼 밖인 경우에만 해제
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX
+    const y = e.clientY
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOverColumn(null)
+    }
+  }
+
+  const handleColumnDrop = (e: React.DragEvent, targetStatus: string) => {
+    e.preventDefault()
+    setDragOverColumn(null)
+    setDragCardId(null)
+
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'))
+      if (data.currentStatus === targetStatus) return // 같은 컬럼이면 무시
+
+      if (data.cardType === 'detail' && data.detailId) {
+        // detail 카드: status 직접 변경
+        handleStatusChange(data.detailId, targetStatus)
+      }
+      // task-only 카드는 드래그로 상태 변경 지원하지 않음 (progress 기반이므로)
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  // ─── 커스텀 상태 추가 ───
+  const handleAddCustomStatus = () => {
+    if (!newStatusLabel.trim() || !currentProject) return
+    addCustomStatus(currentProject.id, newStatusLabel.trim(), newStatusColor)
+    setNewStatusLabel('')
+    setNewStatusColor('purple')
+    setShowAddStatus(false)
   }
 
   // ─── 빈 상태 ───
@@ -259,21 +438,27 @@ export function MyTasksDashboard() {
 
   const renderDetailCard = (card: MyDetailCard) => {
     const { detail, task } = card
-    const colors = STATUS_COLORS[detail.status]
-    const overdue = detail.status !== 'done' && isOverdue(detail.due_date)
+    const statusKey = detail.status
+    const colors = getStatusColors(statusKey, projectCustomStatuses)
+    const overdue = statusKey !== 'done' && isOverdue(detail.due_date)
     const isExpanded = expandedCards.has(detail.id)
     const assigneeNames = (detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : []))
       .map((id) => members.find((m) => m.id === id)?.name)
       .filter(Boolean)
+    const isDragging = dragCardId === detail.id
 
     return (
       <div
         key={detail.id}
+        draggable="true"
+        onDragStart={(e) => handleDragStart(e, card)}
+        onDragEnd={handleDragEnd}
         className={cn(
           'rounded-lg border border-border/40 border-l-[3px] shadow-sm transition-all hover:shadow-md cursor-pointer',
           colors.bg,
           colors.border,
-          overdue && 'ring-1 ring-red-300 border-l-red-500'
+          overdue && 'ring-1 ring-red-300 border-l-red-500',
+          isDragging && 'opacity-40'
         )}
       >
         {/* 소속 작업명 + 상세 열기 */}
@@ -319,7 +504,7 @@ export function MyTasksDashboard() {
 
           <Select
             value={detail.status}
-            onValueChange={(v) => handleStatusChange(detail.id, v as 'todo' | 'in_progress' | 'done')}
+            onValueChange={(v) => v && handleStatusChange(detail.id, v)}
           >
             <SelectTrigger
               className={cn(
@@ -330,12 +515,12 @@ export function MyTasksDashboard() {
               )}
               onClick={(e) => e.stopPropagation()}
             >
-              <SelectValue>{STATUS_LABELS[detail.status]}</SelectValue>
+              <SelectValue>{allStatusLabels[detail.status] || detail.status}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todo">대기</SelectItem>
-              <SelectItem value="in_progress">진행중</SelectItem>
-              <SelectItem value="done">완료</SelectItem>
+              {allStatuses.map((s) => (
+                <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -411,7 +596,7 @@ export function MyTasksDashboard() {
     const overdue = isTaskOverdue(task)
     const progress = Math.round(task.actual_progress * 100)
     const status = progress >= 100 ? 'done' : progress > 0 ? 'in_progress' : 'todo'
-    const colors = STATUS_COLORS[status]
+    const colors = getStatusColors(status, projectCustomStatuses)
 
     return (
       <div
@@ -458,24 +643,44 @@ export function MyTasksDashboard() {
   // ─── 컬럼 렌더 ───
   const renderColumn = (
     title: string,
-    status: 'todo' | 'in_progress' | 'done',
+    statusKey: string,
     cards: MyCard[],
-    count: number
+    count: number,
+    isCustom?: boolean,
+    customStatusId?: string,
   ) => {
-    const colors = STATUS_COLORS[status]
+    const colors = getStatusColors(statusKey, projectCustomStatuses)
+    const isDropTarget = dragOverColumn === statusKey && dragCardId !== null
     return (
-      <div className="flex flex-col min-w-0 flex-1">
+      <div
+        className={cn(
+          'flex flex-col min-w-0 flex-1 rounded-lg transition-all',
+          isDropTarget && 'ring-2 ring-primary bg-primary/5'
+        )}
+        onDragOver={(e) => handleColumnDragOver(e, statusKey)}
+        onDragLeave={handleColumnDragLeave}
+        onDrop={(e) => handleColumnDrop(e, statusKey)}
+      >
         {/* 컬럼 헤더 */}
         <div className="px-3 py-2 flex items-center gap-2 border-b border-border/30">
           <div className={cn('w-2 h-2 rounded-full', colors.headerDot)} />
           <span className={cn('text-xs font-semibold', colors.headerText)}>{title}</span>
           <span className="text-[10px] text-muted-foreground/50 font-medium">{count}</span>
+          {isCustom && canManageStatuses && customStatusId && (
+            <button
+              className="ml-auto text-muted-foreground/40 hover:text-red-500 transition-colors"
+              onClick={() => removeCustomStatus(customStatusId)}
+              title="상태 삭제"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
         </div>
         {/* 카드 목록 */}
         <div className="flex-1 bg-muted/10 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">
           {cards.length === 0 && (
             <div className="text-center text-[11px] text-muted-foreground/30 py-6">
-              항목 없음
+              {isDropTarget ? '여기에 놓기' : '항목 없음'}
             </div>
           )}
           {cards.map(renderCard)}
@@ -483,6 +688,15 @@ export function MyTasksDashboard() {
       </div>
     )
   }
+
+  // 통계 계산
+  const statsSummary = allStatuses.map((s) => {
+    const cnt = grouped[s.key]?.length || 0
+    return `${s.label} ${cnt}`
+  }).join(' · ')
+
+  // grid 컬럼 수 계산
+  const visibleStatuses = allStatuses.filter((s) => !(hideDone && s.key === 'done'))
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -494,7 +708,7 @@ export function MyTasksDashboard() {
             <span className="text-sm font-semibold">내 업무</span>
           </div>
           <span className="text-xs text-muted-foreground">
-            총 {total}개 · 대기 {todoCount} · 진행 {inProgressCount} · 완료 {doneCount}
+            총 {total}개 · {statsSummary}
           </span>
           <div className="flex items-center gap-2 ml-auto">
             <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -503,7 +717,7 @@ export function MyTasksDashboard() {
             <span className="text-xs font-medium text-primary tabular-nums">{progressPercent}%</span>
           </div>
         </div>
-        {/* 검색 + 기간 + 완료숨기기 */}
+        {/* 검색 + 기간 + 완료숨기기 + 상태추가 */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-[240px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
@@ -528,21 +742,79 @@ export function MyTasksDashboard() {
               <button onClick={() => { setFilterFrom(''); setFilterTo('') }} className="text-xs text-muted-foreground hover:text-primary">초기화</button>
             )}
           </div>
-          <div className="ml-auto">
+          <div className="flex items-center gap-2 ml-auto">
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
               <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} className="w-3.5 h-3.5 rounded accent-primary" />
               <span className="text-xs text-muted-foreground">완료 숨기기</span>
             </label>
+            {canManageStatuses && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => setShowAddStatus(true)}
+              >
+                <Plus className="h-3 w-3" />
+                상태 추가
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* 커스텀 상태 추가 인라인 폼 */}
+        {showAddStatus && (
+          <div className="flex items-center gap-2 pt-1 border-t border-border/20">
+            <Input
+              placeholder="상태 이름..."
+              value={newStatusLabel}
+              onChange={(e) => setNewStatusLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustomStatus() }}
+              className="h-7 text-xs w-[140px]"
+              autoFocus
+            />
+            <div className="flex items-center gap-1">
+              {AVAILABLE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  className={cn(
+                    'w-5 h-5 rounded-full border-2 transition-all',
+                    newStatusColor === c ? 'border-foreground scale-110' : 'border-transparent'
+                  )}
+                  style={{ backgroundColor: `var(--color-${c}-400, ${c})` }}
+                  onClick={() => setNewStatusColor(c)}
+                  title={c}
+                >
+                  <span className={cn('block w-full h-full rounded-full', `bg-${c}-400`)} />
+                </button>
+              ))}
+            </div>
+            <Button size="sm" className="h-7 px-2 text-xs" onClick={handleAddCustomStatus} disabled={!newStatusLabel.trim()}>
+              추가
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowAddStatus(false)}>
+              취소
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* 칸반 컬럼 */}
       <div className="flex-1 overflow-auto p-4">
-        <div className={cn("grid grid-cols-1 gap-4 h-full", hideDone ? "md:grid-cols-2" : "md:grid-cols-3")}>
-          {renderColumn('대기', 'todo', grouped.todo, todoCount)}
-          {renderColumn('진행중', 'in_progress', grouped.in_progress, inProgressCount)}
-          {!hideDone && renderColumn('완료', 'done', grouped.done, doneCount)}
+        <div
+          className="grid grid-cols-1 gap-4 h-full"
+          style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}
+        >
+          {visibleStatuses.map((s) => {
+            const isCustom = !DEFAULT_STATUS_LABELS[s.key]
+            return renderColumn(
+              s.label,
+              s.key,
+              grouped[s.key] || [],
+              grouped[s.key]?.length || 0,
+              isCustom,
+              isCustom ? s.key : undefined,
+            )
+          })}
         </div>
       </div>
 

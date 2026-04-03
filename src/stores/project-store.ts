@@ -12,12 +12,20 @@ export interface ProjectMember {
   role: ProjectRole
 }
 
+export interface CustomStatus {
+  id: string
+  label: string
+  color: string       // tailwind color class prefix (e.g. 'purple', 'pink', 'orange')
+  projectId: string
+}
+
 interface ProjectState {
   projects: Project[]
   currentProject: Project | null
   theme: ColorTheme
   isLoading: boolean
   projectMembers: ProjectMember[]  // 프로젝트별 멤버/역할
+  customStatuses: CustomStatus[]   // 프로젝트별 커스텀 상태
 
   loadProjects: () => Promise<void>
   setProjects: (projects: Project[]) => void
@@ -30,11 +38,17 @@ interface ProjectState {
   setLoading: (loading: boolean) => void
 
   // 프로젝트 멤버 관리
+  loadProjectMembers: (projectId: string) => Promise<void>
   addProjectMember: (member: ProjectMember) => void
   removeProjectMember: (projectId: string, userId: string) => void
   updateProjectMemberRole: (projectId: string, userId: string, role: ProjectRole) => void
   getProjectMembers: (projectId: string) => ProjectMember[]
   getMyProjectRole: (projectId: string, userId: string) => ProjectRole | null
+
+  // 커스텀 상태 관리
+  addCustomStatus: (projectId: string, label: string, color: string) => void
+  removeCustomStatus: (id: string) => void
+  getCustomStatuses: (projectId: string) => CustomStatus[]
 }
 
 
@@ -78,6 +92,7 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
   theme: THEME_PRESETS[0],
   isLoading: false,
   projectMembers: [] as ProjectMember[],
+  customStatuses: [] as CustomStatus[],
 
   loadProjects: async () => {
     set({ isLoading: true })
@@ -169,6 +184,31 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
 
   // 프로젝트 멤버 관리
+  loadProjectMembers: async (projectId) => {
+    const { data, error } = await supabase
+      .from('project_members')
+      .select('project_id, user_id, role')
+      .eq('project_id', projectId)
+    if (error) {
+      console.error('프로젝트 멤버 로드 실패:', error.message)
+      return
+    }
+    if (data) {
+      const loaded: ProjectMember[] = data.map((row: Record<string, unknown>) => ({
+        projectId: row.project_id as string,
+        userId: row.user_id as string,
+        role: (row.role as ProjectRole) || 'viewer',
+      }))
+      // 기존 다른 프로젝트 멤버 유지 + 현재 프로젝트 멤버 교체
+      set((s) => ({
+        projectMembers: [
+          ...s.projectMembers.filter((m) => m.projectId !== projectId),
+          ...loaded,
+        ],
+      }))
+    }
+  },
+
   addProjectMember: (member) => {
     set((s) => ({
       projectMembers: [...s.projectMembers.filter((m) => !(m.projectId === member.projectId && m.userId === member.userId)), member],
@@ -207,7 +247,24 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
     const member = get().projectMembers.find((m) => m.projectId === projectId && m.userId === userId)
     return member?.role || null
   },
+
+  // 커스텀 상태 관리
+  addCustomStatus: (projectId, label, color) => {
+    const newStatus: CustomStatus = {
+      id: crypto.randomUUID(),
+      label,
+      color,
+      projectId,
+    }
+    set((s) => ({ customStatuses: [...s.customStatuses, newStatus] }))
+  },
+
+  removeCustomStatus: (id) => {
+    set((s) => ({ customStatuses: s.customStatuses.filter((cs) => cs.id !== id) }))
+  },
+
+  getCustomStatuses: (projectId) => get().customStatuses.filter((cs) => cs.projectId === projectId),
 }), {
   name: 'xlgantt-projects',
-  partialize: (state) => ({ projects: state.projects, projectMembers: state.projectMembers }),
+  partialize: (state) => ({ projects: state.projects, projectMembers: state.projectMembers, customStatuses: state.customStatuses }),
 }))

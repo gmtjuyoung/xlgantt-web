@@ -263,7 +263,7 @@ export function Header() {
           value={project?.status_date || ''}
           onChange={(d) => updateProject({ status_date: d || undefined })}
           placeholder="선택"
-          className="h-7 text-xs font-medium w-[150px]"
+          className="h-7 text-xs font-medium w-[190px]"
         />
       </div>
 

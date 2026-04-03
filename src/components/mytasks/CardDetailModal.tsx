@@ -30,6 +30,7 @@ import { MemberPicker } from '@/components/common/MemberPicker'
 import { useAuthStore } from '@/stores/auth-store'
 import { useResourceStore } from '@/stores/resource-store'
 import { useTaskStore } from '@/stores/task-store'
+import { useProjectStore } from '@/stores/project-store'
 import { cn } from '@/lib/utils'
 import type { TaskDetail } from '@/lib/resource-types'
 import type { Task } from '@/lib/types'
@@ -68,6 +69,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   const currentUser = useAuthStore((s) => s.currentUser)
   const {
     taskDetails,
+    members,
     updateTaskDetail,
     addAttachment,
     removeAttachment,
@@ -75,6 +77,8 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
     deleteComment,
   } = useResourceStore()
   const tasks = useTaskStore((s) => s.tasks)
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const customStatuses = useProjectStore((s) => s.customStatuses)
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
@@ -96,6 +100,41 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
     if (!detail) return undefined
     return tasks.find((t) => t.id === detail.task_id)
   }, [detail, tasks])
+
+  // 프로젝트 커스텀 상태
+  const projectCustomStatuses = useMemo(() => {
+    if (!currentProject) return []
+    return customStatuses.filter((cs) => cs.projectId === currentProject.id)
+  }, [customStatuses, currentProject])
+
+  // 전체 상태 목록
+  const allStatuses = useMemo(() => {
+    const base: { key: string; label: string }[] = [
+      { key: 'todo', label: '대기' },
+      { key: 'in_progress', label: '진행중' },
+    ]
+    for (const cs of projectCustomStatuses) {
+      base.push({ key: cs.id, label: cs.label })
+    }
+    base.push({ key: 'done', label: '완료' })
+    return base
+  }, [projectCustomStatuses])
+
+  // 전체 상태 라벨
+  const allStatusLabels = useMemo(() => {
+    const labels: Record<string, string> = { ...STATUS_LABELS }
+    for (const cs of projectCustomStatuses) {
+      labels[cs.id] = cs.label
+    }
+    return labels
+  }, [projectCustomStatuses])
+
+  // 담당자 이름 표시
+  const assigneeNames = useMemo(() => {
+    if (!detail) return []
+    const ids = detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])
+    return ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean) as string[]
+  }, [detail, members])
 
   // ESC key to close
   useEffect(() => {
@@ -239,29 +278,19 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
         >
           <SelectTrigger className="h-8 text-sm">
             <div className="flex items-center gap-2">
-              <div className={cn('w-2 h-2 rounded-full', STATUS_DOT_COLORS[detail.status])} />
-              <SelectValue>{STATUS_LABELS[detail.status]}</SelectValue>
+              <div className={cn('w-2 h-2 rounded-full', STATUS_DOT_COLORS[detail.status] || 'bg-gray-400')} />
+              <SelectValue>{allStatusLabels[detail.status] || detail.status}</SelectValue>
             </div>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todo">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-amber-400" />
-                대기
-              </div>
-            </SelectItem>
-            <SelectItem value="in_progress">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-400" />
-                진행중
-              </div>
-            </SelectItem>
-            <SelectItem value="done">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                완료
-              </div>
-            </SelectItem>
+            {allStatuses.map((s) => (
+              <SelectItem key={s.key} value={s.key}>
+                <div className="flex items-center gap-2">
+                  <div className={cn('w-2 h-2 rounded-full', STATUS_DOT_COLORS[s.key] || 'bg-gray-400')} />
+                  {s.label}
+                </div>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -269,12 +298,17 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
       {/* Assignee */}
       <div>
         <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">담당자</label>
+        {assigneeNames.length > 0 && (
+          <div className="text-sm text-foreground mb-1 px-1">
+            {assigneeNames.join(', ')}
+          </div>
+        )}
         <MemberPicker
           value={detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])}
           onChange={(ids) =>
             updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })
           }
-          placeholder="담당자 선택..."
+          placeholder={assigneeNames.length > 0 ? '담당자 변경...' : '담당자 선택...'}
           size="sm"
         />
       </div>
@@ -629,29 +663,19 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
                 >
                   <SelectTrigger className="h-7 text-sm w-[120px]">
                     <div className="flex items-center gap-2">
-                      <div className={cn('w-2 h-2 rounded-full', STATUS_DOT_COLORS[detail.status])} />
-                      <SelectValue>{STATUS_LABELS[detail.status]}</SelectValue>
+                      <div className={cn('w-2 h-2 rounded-full', STATUS_DOT_COLORS[detail.status] || 'bg-gray-400')} />
+                      <SelectValue>{allStatusLabels[detail.status] || detail.status}</SelectValue>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todo">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-400" />
-                        대기
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="in_progress">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-400" />
-                        진행중
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="done">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                        완료
-                      </div>
-                    </SelectItem>
+                    {allStatuses.map((s) => (
+                      <SelectItem key={s.key} value={s.key}>
+                        <div className="flex items-center gap-2">
+                          <div className={cn('w-2 h-2 rounded-full', STATUS_DOT_COLORS[s.key] || 'bg-gray-400')} />
+                          {s.label}
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -660,12 +684,17 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
               <div className="flex items-center gap-3">
                 <label className="text-[11px] font-medium text-muted-foreground/70 w-12 flex-shrink-0">담당자</label>
                 <div className="flex-1">
+                  {assigneeNames.length > 0 && (
+                    <div className="text-sm text-foreground mb-1">
+                      {assigneeNames.join(', ')}
+                    </div>
+                  )}
                   <MemberPicker
                     value={detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])}
                     onChange={(ids) =>
                       updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })
                     }
-                    placeholder="담당자 선택..."
+                    placeholder={assigneeNames.length > 0 ? '담당자 변경...' : '담당자 선택...'}
                     size="sm"
                   />
                 </div>
