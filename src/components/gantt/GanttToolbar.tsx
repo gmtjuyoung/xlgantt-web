@@ -166,14 +166,22 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
   const recalcWBS = () => {
     setTimeout(async () => {
       const currentTasks = useTaskStore.getState().tasks
-      const updated = recalculateWBSCodes(currentTasks)
+      let updated = recalculateWBSCodes(currentTasks)
+      // 자식이 없는데 is_group인 작업을 자동 해제
+      updated = updated.map((task) => {
+        if (task.is_group) {
+          const hasChildren = updated.some((t) => t.parent_id === task.id)
+          if (!hasChildren) return { ...task, is_group: false }
+        }
+        return task
+      })
       setTasks(updated)
       // DB에도 wbs_code/wbs_level 업데이트
       const { supabase } = await import('@/lib/supabase')
       for (const task of updated) {
         const original = currentTasks.find((t) => t.id === task.id)
-        if (original && (original.wbs_code !== task.wbs_code || original.wbs_level !== task.wbs_level)) {
-          supabase.from('tasks').update({ wbs_code: task.wbs_code, wbs_level: task.wbs_level }).eq('id', task.id)
+        if (original && (original.wbs_code !== task.wbs_code || original.wbs_level !== task.wbs_level || original.is_group !== task.is_group)) {
+          supabase.from('tasks').update({ wbs_code: task.wbs_code, wbs_level: task.wbs_level, is_group: task.is_group }).eq('id', task.id)
             .then(({ error }) => { if (error) console.error('WBS 업데이트 실패:', error.message) })
         }
       }
