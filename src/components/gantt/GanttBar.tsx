@@ -117,7 +117,7 @@ export function GanttBar({ task, rowIndex, scale, theme, onDoubleClick, onContex
           )
           if (!alreadyExists) {
             const newDep: Dependency = {
-              id: `dep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              id: crypto.randomUUID(),
               project_id: project?.id || '',
               predecessor_id: linkSourceTaskId,
               successor_id: task.id,

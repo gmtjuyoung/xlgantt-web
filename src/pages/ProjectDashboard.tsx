@@ -20,7 +20,7 @@ export function ProjectDashboard() {
 
   const handleCreate = () => {
     if (!newName.trim()) return
-    const id = `proj-${Date.now()}`
+    const id = crypto.randomUUID()
     addProject({
       id,
       name: newName,
