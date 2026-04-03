@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { TaskEditDialog } from '@/components/gantt/TaskEditDialog'
+import { CardDetailModal } from '@/components/mytasks/CardDetailModal'
 import type { Task } from '@/lib/types'
 import type { TaskAssignment, TaskDetail } from '@/lib/resource-types'
 
@@ -75,6 +76,7 @@ export function MemberTasksView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [editTaskId, setEditTaskId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [cardDetailId, setCardDetailId] = useState<string | null>(null)
 
   const handleOpenTask = useCallback((taskId: string) => {
     setEditTaskId(taskId)
@@ -422,7 +424,8 @@ export function MemberTasksView() {
                             {details.map((detail) => (
                               <div
                                 key={detail.id}
-                                className="flex items-center gap-2 pl-10 pr-5 py-1.5 text-[11px] hover:bg-accent/20 transition-colors"
+                                className="flex items-center gap-2 pl-10 pr-5 py-1.5 text-[11px] hover:bg-accent/20 transition-colors cursor-pointer"
+                                onClick={() => setCardDetailId(detail.id)}
                               >
                                 <StatusBadge status={detail.status} />
                                 <span className={cn(
@@ -455,6 +458,13 @@ export function MemberTasksView() {
         taskId={editTaskId}
         open={dialogOpen}
         onClose={handleCloseDialog}
+      />
+
+      {/* Card Detail Sliding Panel */}
+      <CardDetailModal
+        detailId={cardDetailId}
+        open={!!cardDetailId}
+        onClose={() => setCardDetailId(null)}
       />
     </div>
   )
