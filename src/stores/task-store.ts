@@ -297,9 +297,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const duration = calcDuration(minStart, maxEnd)
       const totalWorkload = leafChildren.reduce((sum, t) => sum + (t.total_workload || 0), 0)
 
+      // 진척률: 작업량 가중 평균
+      const weightedProgress = totalWorkload > 0
+        ? leafChildren.reduce((sum, t) => sum + (t.actual_progress * (t.total_workload || 0)), 0) / totalWorkload
+        : leafChildren.length > 0
+          ? leafChildren.reduce((sum, t) => sum + t.actual_progress, 0) / leafChildren.length
+          : 0
+
       tasks = tasks.map((t) =>
         t.id === group.id
-          ? { ...t, planned_start: minStart, planned_end: maxEnd, total_duration: duration, total_workload: totalWorkload || t.total_workload }
+          ? { ...t, planned_start: minStart, planned_end: maxEnd, total_duration: duration, total_workload: totalWorkload || t.total_workload, actual_progress: weightedProgress }
           : t
       )
     }

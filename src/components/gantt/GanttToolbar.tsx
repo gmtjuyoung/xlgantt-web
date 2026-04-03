@@ -164,10 +164,19 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
 
   // WBS 코드 재계산
   const recalcWBS = () => {
-    setTimeout(() => {
+    setTimeout(async () => {
       const currentTasks = useTaskStore.getState().tasks
       const updated = recalculateWBSCodes(currentTasks)
       setTasks(updated)
+      // DB에도 wbs_code/wbs_level 업데이트
+      const { supabase } = await import('@/lib/supabase')
+      for (const task of updated) {
+        const original = currentTasks.find((t) => t.id === task.id)
+        if (original && (original.wbs_code !== task.wbs_code || original.wbs_level !== task.wbs_level)) {
+          supabase.from('tasks').update({ wbs_code: task.wbs_code, wbs_level: task.wbs_level }).eq('id', task.id)
+            .then(({ error }) => { if (error) console.error('WBS 업데이트 실패:', error.message) })
+        }
+      }
     }, 0)
   }
 
