@@ -37,50 +37,6 @@ interface ProjectState {
   getMyProjectRole: (projectId: string, userId: string) => ProjectRole | null
 }
 
-// 초기 샘플 프로젝트 3개
-const INITIAL_PROJECTS: Project[] = [
-  {
-    id: 'sample-project-001',
-    name: 'ABC 프로젝트',
-    description: 'XLGantt 샘플 프로젝트',
-    start_date: '2025-07-18',
-    end_date: '2025-12-19',
-    owner_id: 'local',
-    theme_id: 0,
-    language: 'ko',
-    zoom_level: 2,
-    status_date: '2025-08-10',
-    created_at: '2025-07-18T00:00:00Z',
-    updated_at: '2025-07-18T00:00:00Z',
-  },
-  {
-    id: 'sample-project-002',
-    name: 'DEF 프로젝트',
-    description: '두 번째 샘플 프로젝트',
-    start_date: '2025-09-01',
-    end_date: '2026-03-31',
-    owner_id: 'local',
-    theme_id: 1,
-    language: 'ko',
-    zoom_level: 2,
-    status_date: '2025-10-01',
-    created_at: '2025-09-01T00:00:00Z',
-    updated_at: '2025-09-01T00:00:00Z',
-  },
-  {
-    id: 'sample-project-003',
-    name: '신규 프로젝트',
-    description: '새로 생성된 프로젝트',
-    start_date: '2026-01-05',
-    end_date: '2026-06-30',
-    owner_id: 'local',
-    theme_id: 2,
-    language: 'ko',
-    zoom_level: 2,
-    created_at: '2026-01-05T00:00:00Z',
-    updated_at: '2026-01-05T00:00:00Z',
-  },
-]
 
 /** DB row → 로컬 Project 변환 */
 function dbToProject(row: Record<string, unknown>): Project {
@@ -117,7 +73,7 @@ function projectToDb(p: Project): Record<string, unknown> {
 }
 
 export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
-  projects: INITIAL_PROJECTS,
+  projects: [],
   currentProject: null,
   theme: THEME_PRESETS[0],
   isLoading: false,
@@ -131,11 +87,9 @@ export const useProjectStore = create<ProjectState>()(persist((set, get) => ({
       .order('created_at', { ascending: true })
     if (error) {
       console.error('프로젝트 목록 로드 실패:', error.message)
-      // 폴백: INITIAL_PROJECTS 유지
-    } else if (data && data.length > 0) {
-      set({ projects: data.map(dbToProject) })
+    } else {
+      set({ projects: data ? data.map(dbToProject) : [] })
     }
-    // data가 빈 배열인 경우도 INITIAL_PROJECTS 폴백 유지
     set({ isLoading: false })
   },
 

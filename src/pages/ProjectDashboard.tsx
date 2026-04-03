@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, BarChart3, Calendar, Trash2, FolderOpen, User, Shield, LogOut, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,11 @@ import { DatePicker } from '@/components/ui/date-picker'
 
 export function ProjectDashboard() {
   const navigate = useNavigate()
-  const { projects, addProject, deleteProject } = useProjectStore()
+  const { projects, addProject, deleteProject, loadProjects } = useProjectStore()
+
+  useEffect(() => {
+    loadProjects()
+  }, [])
   const { currentUser, logout } = useAuthStore()
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
