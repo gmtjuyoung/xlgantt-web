@@ -193,7 +193,8 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      login: async (email, password) => {
+      login: async (rawEmail, password) => {
+        const email = rawEmail.trim().toLowerCase()
         const { authMode } = get()
 
         // Supabase 인증
@@ -253,7 +254,8 @@ export const useAuthStore = create<AuthState>()(
         return { success: true }
       },
 
-      signup: async (email, name, password) => {
+      signup: async (rawEmail, name, password) => {
+        const email = rawEmail.trim().toLowerCase()
         const { authMode } = get()
 
         // Supabase 회원가입
@@ -469,7 +471,8 @@ export const useAuthStore = create<AuthState>()(
         return { success: true }
       },
 
-      addUserManual: async (email, name, password, role) => {
+      addUserManual: async (rawEmail, name, password, role) => {
+        const email = rawEmail.trim().toLowerCase()
         const { authMode, users, passwords } = get()
 
         if (authMode === 'supabase') {
