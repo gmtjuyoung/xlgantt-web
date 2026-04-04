@@ -43,7 +43,7 @@ export function DatePicker({ value, onChange, placeholder = '날짜 선택', dis
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger
         className={cn(
-          'inline-flex w-full items-center rounded-lg border bg-card px-3 text-left text-sm font-normal cursor-pointer hover:bg-accent/30 transition-colors',
+          'inline-flex w-full items-center rounded-lg border bg-card px-3 text-left text-sm font-normal cursor-pointer hover:bg-accent/30 transition-colors whitespace-nowrap overflow-hidden',
           disabled && 'opacity-50 pointer-events-none',
           !isValidDate && 'text-muted-foreground',
           className
