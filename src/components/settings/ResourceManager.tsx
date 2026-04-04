@@ -467,35 +467,45 @@ export function ResourceManager() {
                             <ChevronRight className="h-3.5 w-3.5" />
                           )}
                         </span>
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                          style={{ backgroundColor: company.color }}>
-                          {member.name.charAt(0)}
-                        </div>
-                        <input
-                          className="font-medium bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none w-20"
-                          defaultValue={member.name}
-                          onClick={(e) => e.stopPropagation()}
-                          onBlur={(e) => updateMember(member.id, { name: e.target.value })}
-                        />
-                        <input
-                          className="text-xs text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none w-16"
-                          defaultValue={member.role || ''}
-                          placeholder="직책"
-                          onClick={(e) => e.stopPropagation()}
-                          onBlur={(e) => updateMember(member.id, { role: e.target.value || undefined })}
-                        />
                         {(() => {
-                          const isLinkedUser = member.email && allUsers.some((u) => u.email === member.email)
-                          return isLinkedUser ? (
-                            <span className="text-xs text-muted-foreground/60 flex-1" title="등록회원 - 수정 불가">{member.email}</span>
-                          ) : (
-                            <input
-                              className="text-xs text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none flex-1"
-                              defaultValue={member.email || ''}
-                              placeholder="이메일"
-                              onClick={(e) => e.stopPropagation()}
-                              onBlur={(e) => updateMember(member.id, { email: e.target.value || undefined })}
-                            />
+                          const isLinkedUser = !!(member.email && allUsers.some((u) => u.email === member.email))
+                          return (
+                            <>
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                                style={{ backgroundColor: company.color }}>
+                                {member.name.charAt(0)}
+                              </div>
+                              {isLinkedUser ? (
+                                <>
+                                  <span className="font-medium w-20 truncate" title="등록회원">{member.name}</span>
+                                  <span className="text-xs text-muted-foreground w-16 truncate">{member.role || ''}</span>
+                                  <span className="text-xs text-muted-foreground/60 flex-1 truncate">{member.email}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <input
+                                    className="font-medium bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none w-20"
+                                    defaultValue={member.name}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onBlur={(e) => updateMember(member.id, { name: e.target.value })}
+                                  />
+                                  <input
+                                    className="text-xs text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none w-16"
+                                    defaultValue={member.role || ''}
+                                    placeholder="직책"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onBlur={(e) => updateMember(member.id, { role: e.target.value || undefined })}
+                                  />
+                                  <input
+                                    className="text-xs text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none flex-1"
+                                    defaultValue={member.email || ''}
+                                    placeholder="이메일"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onBlur={(e) => updateMember(member.id, { email: e.target.value || undefined })}
+                                  />
+                                </>
+                              )}
+                            </>
                           )
                         })()}
                         {/* Task count badge */}
