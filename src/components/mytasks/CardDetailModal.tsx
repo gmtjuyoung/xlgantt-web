@@ -70,6 +70,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   const {
     taskDetails,
     members,
+    assignments,
     updateTaskDetail,
     addAttachment,
     removeAttachment,
@@ -129,12 +130,21 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
     return labels
   }, [projectCustomStatuses])
 
-  // 담당자 이름 표시
-  const assigneeNames = useMemo(() => {
+  // 담당자: 세부항목 자체 → 없으면 부모 작업 배정 담당자
+  const effectiveAssigneeIds = useMemo(() => {
     if (!detail) return []
     const ids = detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])
-    return ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean) as string[]
-  }, [detail, members])
+    if (ids.length > 0) return ids
+    // 폴백: 부모 작업의 배정 담당자
+    if (detail.task_id) {
+      return assignments.filter((a) => a.task_id === detail.task_id).map((a) => a.member_id)
+    }
+    return []
+  }, [detail, assignments])
+
+  const assigneeNames = useMemo(() => {
+    return effectiveAssigneeIds.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean) as string[]
+  }, [effectiveAssigneeIds, members])
 
   // ESC key to close
   useEffect(() => {
@@ -304,7 +314,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
           </div>
         )}
         <MemberPicker
-          value={detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])}
+          value={effectiveAssigneeIds}
           onChange={(ids) =>
             updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })
           }
@@ -408,7 +418,21 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
           {attachments.map((att) => (
             <div
               key={att.id}
-              className="group flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors max-w-[220px]"
+              className="group flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors max-w-[220px] cursor-pointer"
+              onClick={() => {
+                // 클릭 시 다운로드 또는 새 탭에서 열기
+                if (att.data) {
+                  if (isImageType(att.type)) {
+                    window.open(att.data, '_blank')
+                  } else {
+                    const link = document.createElement('a')
+                    link.href = att.data
+                    link.download = att.filename
+                    link.click()
+                  }
+                }
+              }}
+              title={`${att.filename} - 클릭하여 ${isImageType(att.type) ? '미리보기' : '다운로드'}`}
             >
               {isImageType(att.type) ? (
                 <img
@@ -424,7 +448,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
                 <p className="text-[10px] text-muted-foreground">{formatFileSize(att.size)}</p>
               </div>
               <button
-                onClick={() => removeAttachment(detail.id, att.id)}
+                onClick={(e) => { e.stopPropagation(); removeAttachment(detail.id, att.id) }}
                 className="flex-shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 transition-all"
               >
                 <X className="h-3 w-3 text-red-500" />
@@ -690,7 +714,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
                     </div>
                   )}
                   <MemberPicker
-                    value={detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])}
+                    value={effectiveAssigneeIds}
                     onChange={(ids) =>
                       updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })
                     }
