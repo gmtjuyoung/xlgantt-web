@@ -601,24 +601,30 @@ export function GanttBar({ task, rowIndex, scale, theme, onDoubleClick, onContex
         </text>
       )}
 
-      {/* Move area (invisible, covers entire bar) */}
+      {/* Resize handles - always rendered, visible on hover */}
+      {!task.is_milestone && (
+        <>
+          {/* Left resize handle */}
+          <rect x={barX - 2} y={barY - 2} width={10} height={barH + 4}
+            fill={hovering || isDragging ? 'white' : 'transparent'} opacity={hovering || isDragging ? 0.7 : 0} rx={2}
+            className="cursor-ew-resize"
+            style={{ pointerEvents: 'all' }}
+            onPointerDown={(e) => handleDragStart('left', e)} />
+          {/* Right resize handle */}
+          <rect x={barX + barW - 8} y={barY - 2} width={10} height={barH + 4}
+            fill={hovering || isDragging ? 'white' : 'transparent'} opacity={hovering || isDragging ? 0.7 : 0} rx={2}
+            className="cursor-ew-resize"
+            style={{ pointerEvents: 'all' }}
+            onPointerDown={(e) => handleDragStart('right', e)} />
+        </>
+      )}
+      {/* Move area (between handles) */}
       <rect
-        x={barX + 6} y={barY} width={Math.max(0, barW - 12)} height={barH}
+        x={barX + 8} y={barY} width={Math.max(0, barW - 16)} height={barH}
         fill="transparent"
         className={isDragging ? 'cursor-grabbing' : 'cursor-grab'}
         onPointerDown={(e) => handleDragStart('move', e)}
       />
-      {/* Resize handles */}
-      {(hovering || isDragging) && !task.is_milestone && (
-        <>
-          <rect x={barX} y={barY} width={6} height={barH}
-            fill="white" opacity={0.7} rx={2} className="cursor-ew-resize"
-            onPointerDown={(e) => handleDragStart('left', e)} />
-          <rect x={barX + barW - 6} y={barY} width={6} height={barH}
-            fill="white" opacity={0.7} rx={2} className="cursor-ew-resize"
-            onPointerDown={(e) => handleDragStart('right', e)} />
-        </>
-      )}
     </g>
   )
 }

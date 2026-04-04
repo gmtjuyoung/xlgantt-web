@@ -231,6 +231,20 @@ export function GanttChart({
             </>
           )}
 
+          {/* Status Date line (기준일) */}
+          {statusDateX > 0 && ganttOptions.showTodayLine && (
+            <>
+              <line
+                x1={statusDateX} y1={0} x2={statusDateX} y2={totalHeight}
+                stroke="#f97316" strokeWidth={1.5} strokeDasharray="6 3" opacity={0.7}
+              />
+              <rect x={statusDateX - 1} y={2} width={48} height={20} rx={4} fill="#f97316" />
+              <text x={statusDateX + 23} y={16} textAnchor="middle" fontSize={11} fill="white" fontWeight="600">
+                기준일
+              </text>
+            </>
+          )}
+
           {/* Dependency arrows */}
           {ganttOptions.showDependencies && dependencies.map((dep) => {
             const predRect = barRects.get(dep.predecessor_id)
