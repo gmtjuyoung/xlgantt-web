@@ -314,6 +314,20 @@ export function useKeyboard() {
           }
           break
 
+        case 'ArrowLeft':
+          if (!isInput) {
+            e.preventDefault()
+            handleCollapse()
+          }
+          break
+
+        case 'ArrowRight':
+          if (!isInput) {
+            e.preventDefault()
+            handleExpand()
+          }
+          break
+
         case 'd':
         case 'D':
           if (isCtrl) {

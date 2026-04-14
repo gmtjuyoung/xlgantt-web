@@ -405,12 +405,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     })
   },
 
-  toggleCollapse: (taskId) =>
+  toggleCollapse: (taskId) => {
+    const current = get().tasks.find((t) => t.id === taskId)
+    const newCollapsed = !current?.is_collapsed
     set((state) => ({
       tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, is_collapsed: !t.is_collapsed } : t
+        t.id === taskId ? { ...t, is_collapsed: newCollapsed } : t
       ),
-    })),
+    }))
+    supabase.from('tasks').update({ is_collapsed: newCollapsed }).eq('id', taskId)
+      .then(({ error }) => { if (error) console.error('접기 상태 저장 실패:', error.message) })
+  },
 
   setDependencies: (dependencies) => set({ dependencies }),
 

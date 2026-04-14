@@ -128,7 +128,7 @@ export function ResourceManager() {
   const currentUser = useAuthStore((s) => s.currentUser)
   const allUsers = useAuthStore((s) => s.users).filter((u) => u.approved)
   const project = useProjectStore((s) => s.currentProject)
-  const { addProjectMember } = useProjectStore()
+  const { addProjectMember, projectMembers, updateProjectMemberRole } = useProjectStore()
   const isAdmin = currentUser?.role === 'admin'
   const myProjectRole = project ? useProjectStore.getState().getMyProjectRole(project.id, currentUser?.id || '') : null
   const canManageMembers = isAdmin || myProjectRole === 'pm'
@@ -468,7 +468,11 @@ export function ResourceManager() {
                           )}
                         </span>
                         {(() => {
-                          const isLinkedUser = !!(member.email && allUsers.some((u) => u.email === member.email))
+                          const linkedUser = member.email ? allUsers.find((u) => u.email === member.email) : undefined
+                          const isLinkedUser = !!linkedUser
+                          const currentProjectRole = (linkedUser && project)
+                            ? projectMembers.find((m) => m.projectId === project.id && m.userId === linkedUser.id)?.role
+                            : undefined
                           return (
                             <>
                               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
@@ -478,8 +482,25 @@ export function ResourceManager() {
                               {isLinkedUser ? (
                                 <>
                                   <span className="font-medium w-20 truncate" title="등록회원">{member.name}</span>
-                                  <span className="text-xs text-muted-foreground w-16 truncate">{member.role || ''}</span>
                                   <span className="text-xs text-muted-foreground/60 flex-1 truncate">{member.email}</span>
+                                  {linkedUser && project && (
+                                    <Select
+                                      value={currentProjectRole || 'editor'}
+                                      onValueChange={(v) => v && updateProjectMemberRole(project.id, linkedUser.id, v as ProjectRole)}
+                                    >
+                                      <SelectTrigger
+                                        className="h-7 w-[85px] text-xs flex-shrink-0"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="pm" className="text-xs">PM</SelectItem>
+                                        <SelectItem value="editor" className="text-xs">편집자</SelectItem>
+                                        <SelectItem value="viewer" className="text-xs">뷰어</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  )}
                                 </>
                               ) : (
                                 <>
