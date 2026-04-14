@@ -1,9 +1,10 @@
 import { useCallback, useMemo } from 'react'
-import { ChevronRight, ChevronDown, GripVertical } from 'lucide-react'
+import { ChevronRight, ChevronLeft, GripVertical } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { ROW_HEIGHT } from '@/lib/types'
 import { useTaskStore } from '@/stores/task-store'
 import { useResourceStore } from '@/stores/resource-store'
+import { useProjectStore } from '@/stores/project-store'
 import { TaskCell } from './TaskCell'
 import { cn } from '@/lib/utils'
 import type { ColumnDef } from '@/lib/column-defs'
@@ -26,6 +27,10 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
   const { selectedTaskIds, selectTask, toggleCollapse, updateTask } =
     useTaskStore()
   const { assignments, members, companies, taskDetails } = useResourceStore()
+  const theme = useProjectStore((s) => s.theme)
+
+  // 레벨1 그룹 작업의 테마 색상 (colors[0] = 그룹 계획 색상)
+  const level1GroupColor = task.is_group && task.wbs_level === 1 ? theme.colors[0] : undefined
 
   const isSelected = selectedTaskIds.has(task.id)
 
@@ -105,9 +110,9 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
               onClick={handleToggleCollapse}
             >
               {task.is_collapsed ? (
-                <ChevronRight className="h-3 w-3" />
+                <ChevronRight className="h-4 w-4" />
               ) : (
-                <ChevronDown className="h-3 w-3" />
+                <ChevronLeft className="h-4 w-4" />
               )}
             </button>
           ) : (
@@ -314,13 +319,13 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
       className={cn(
         'group/row flex border-b border-border/25 cursor-pointer text-sm transition-all duration-100 relative',
         isSelected && 'bg-primary/8 border-l-2 border-l-primary',
-        !isSelected && task.is_group && task.wbs_level === 1 && 'bg-slate-100 dark:bg-slate-800/60 font-bold border-b-border/50 [&_*]:!text-slate-700 dark:[&_*]:!text-slate-200',
+        !isSelected && task.is_group && task.wbs_level === 1 && 'bg-slate-100 dark:bg-slate-800/60 font-bold border-b-border/50',
         !isSelected && task.is_group && task.wbs_level === 2 && 'bg-blue-50/60 dark:bg-blue-900/20 font-semibold',
         !isSelected && !task.is_group && 'hover:bg-accent/40',
         !isSelected && !task.is_group && rowIndex % 2 === 1 && 'bg-muted/20',
         isDragging && 'opacity-40',
       )}
-      style={{ height: ROW_HEIGHT, minWidth: totalWidth }}
+      style={{ height: ROW_HEIGHT, minWidth: totalWidth, ...(level1GroupColor ? { color: level1GroupColor } : {}) }}
       onClick={handleClick}
       onDoubleClick={() => onDoubleClick?.(task.id)}
       onContextMenu={handleContextMenu}
