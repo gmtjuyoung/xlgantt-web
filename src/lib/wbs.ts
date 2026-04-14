@@ -132,37 +132,61 @@ export function outdentTask(tasks: Task[], taskId: string): Task[] {
 }
 
 /**
- * Recalculate all WBS codes based on hierarchy and sort order.
- * Uses a two-pass approach: first assign codes to tasks with already-computed parent codes.
+ * Recalculate WBS codes AND sort_order based on hierarchy tree.
+ * - Traverses tree in DFS order (parent → children → next sibling)
+ * - Assigns sort_order sequentially (1000, 2000, 3000...) in DFS order
+ * - Assigns wbs_code based on tree depth and sibling index
+ * Result: parent is always immediately followed by its descendants.
  */
 export function recalculateWBSCodes(tasks: Task[]): Task[] {
-  const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
-  const codeMap = new Map<string, string>() // taskId -> new wbs_code
-  const counters: Record<string, number> = {}
-
-  for (const task of sorted) {
-    const parentCode = task.parent_id
-      ? (codeMap.get(task.parent_id) || '')
-      : ''
-
-    const key = parentCode || 'root'
-    counters[key] = (counters[key] || 0) + 1
-
-    const newCode = parentCode
-      ? `${parentCode}.${counters[key]}`
-      : String(counters[key])
-
-    codeMap.set(task.id, newCode)
+  // 1. Build parent → children map (sorted by current sort_order)
+  const childrenMap = new Map<string | null, Task[]>()
+  for (const task of tasks) {
+    const parentKey = task.parent_id || null
+    if (!childrenMap.has(parentKey)) childrenMap.set(parentKey, [])
+    childrenMap.get(parentKey)!.push(task)
+  }
+  // Sort each children list by current sort_order to preserve user intent
+  for (const [, list] of childrenMap) {
+    list.sort((a, b) => a.sort_order - b.sort_order)
   }
 
-  return sorted.map((task) => {
-    const newCode = codeMap.get(task.id) || task.wbs_code
-    return {
-      ...task,
-      wbs_code: newCode,
-      wbs_level: getWBSLevel(newCode),
+  // 2. DFS traversal: build ordered list with new wbs_code + sort_order
+  const result: Task[] = []
+  let orderCounter = 1000
+  const SORT_STEP = 1000
+
+  const traverse = (parentId: string | null, parentCode: string) => {
+    const children = childrenMap.get(parentId) || []
+    children.forEach((child, index) => {
+      const newCode = parentCode ? `${parentCode}.${index + 1}` : String(index + 1)
+      const newSortOrder = orderCounter
+      orderCounter += SORT_STEP
+      result.push({
+        ...child,
+        wbs_code: newCode,
+        wbs_level: getWBSLevel(newCode),
+        sort_order: newSortOrder,
+      })
+      // Recursively process children
+      traverse(child.id, newCode)
+    })
+  }
+
+  // Start from root tasks (parent_id === null/undefined)
+  traverse(null, '')
+
+  // 3. Handle orphans (tasks whose parent_id points to non-existent parent)
+  const processedIds = new Set(result.map((t) => t.id))
+  for (const task of tasks) {
+    if (!processedIds.has(task.id)) {
+      // Orphan: keep original data but append at end
+      result.push({ ...task, sort_order: orderCounter })
+      orderCounter += SORT_STEP
     }
-  })
+  }
+
+  return result
 }
 
 /**

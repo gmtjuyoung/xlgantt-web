@@ -216,12 +216,23 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
         return task
       })
       setTasks(updated)
-      // DB에도 wbs_code/wbs_level 업데이트
+      // DB에도 wbs_code/wbs_level/sort_order 업데이트
       const { supabase } = await import('@/lib/supabase')
       for (const task of updated) {
         const original = currentTasks.find((t) => t.id === task.id)
-        if (original && (original.wbs_code !== task.wbs_code || original.wbs_level !== task.wbs_level || original.is_group !== task.is_group)) {
-          supabase.from('tasks').update({ wbs_code: task.wbs_code, wbs_level: task.wbs_level, is_group: task.is_group }).eq('id', task.id)
+        if (!original) continue
+        const changed =
+          original.wbs_code !== task.wbs_code ||
+          original.wbs_level !== task.wbs_level ||
+          original.is_group !== task.is_group ||
+          original.sort_order !== task.sort_order
+        if (changed) {
+          supabase.from('tasks').update({
+            wbs_code: task.wbs_code,
+            wbs_level: task.wbs_level,
+            is_group: task.is_group,
+            sort_order: task.sort_order,
+          }).eq('id', task.id)
             .then(({ error }) => { if (error) console.error('WBS 업데이트 실패:', error.message) })
         }
       }

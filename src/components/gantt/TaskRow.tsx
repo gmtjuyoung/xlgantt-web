@@ -61,7 +61,8 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      selectTask(task.id, e.ctrlKey || e.metaKey)
+      const mode = e.shiftKey ? 'range' : (e.ctrlKey || e.metaKey) ? 'toggle' : 'single'
+      selectTask(task.id, mode)
     },
     [task.id, selectTask]
   )
@@ -70,7 +71,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
     (e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      selectTask(task.id, false)
+      selectTask(task.id, 'single')
       onContextMenu?.(task.id, e.clientX, e.clientY)
     },
     [task.id, selectTask, onContextMenu]

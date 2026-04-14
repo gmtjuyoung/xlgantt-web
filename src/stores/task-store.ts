@@ -195,6 +195,7 @@ interface TaskState {
   tasks: Task[]
   dependencies: Dependency[]
   selectedTaskIds: Set<string>
+  lastSelectedId: string | null  // Shift+클릭 범위 선택 기준점
   editingCell: { taskId: string; field: string } | null
   isLoading: boolean
 
@@ -218,7 +219,7 @@ interface TaskState {
   removeDependency: (depId: string) => void
 
   // Selection
-  selectTask: (taskId: string, multi?: boolean) => void
+  selectTask: (taskId: string, mode?: 'single' | 'toggle' | 'range') => void
   clearSelection: () => void
 
   // Reorder (drag & drop)
@@ -247,6 +248,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   dependencies: [],
   selectedTaskIds: new Set(),
+  lastSelectedId: null,
   editingCell: null,
   isLoading: false,
 
@@ -573,18 +575,31 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     })
   },
 
-  selectTask: (taskId, multi = false) =>
+  selectTask: (taskId, mode = 'single') =>
     set((state) => {
-      const newSelection = new Set(multi ? state.selectedTaskIds : [])
-      if (newSelection.has(taskId)) {
-        newSelection.delete(taskId)
-      } else {
-        newSelection.add(taskId)
+      if (mode === 'range' && state.lastSelectedId) {
+        // Shift 클릭: sort_order 기준 범위 선택
+        const sorted = [...state.tasks].sort((a, b) => a.sort_order - b.sort_order)
+        const fromIdx = sorted.findIndex((t) => t.id === state.lastSelectedId)
+        const toIdx = sorted.findIndex((t) => t.id === taskId)
+        if (fromIdx >= 0 && toIdx >= 0) {
+          const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
+          const rangeIds = sorted.slice(start, end + 1).map((t) => t.id)
+          return { selectedTaskIds: new Set(rangeIds) }
+        }
       }
-      return { selectedTaskIds: newSelection }
+      if (mode === 'toggle') {
+        // Ctrl 클릭: 토글 (기존 선택 유지)
+        const newSelection = new Set(state.selectedTaskIds)
+        if (newSelection.has(taskId)) newSelection.delete(taskId)
+        else newSelection.add(taskId)
+        return { selectedTaskIds: newSelection, lastSelectedId: taskId }
+      }
+      // single: 단일 선택
+      return { selectedTaskIds: new Set([taskId]), lastSelectedId: taskId }
     }),
 
-  clearSelection: () => set({ selectedTaskIds: new Set() }),
+  clearSelection: () => set({ selectedTaskIds: new Set(), lastSelectedId: null }),
 
   startEditing: (taskId, field) =>
     set({ editingCell: { taskId, field } }),

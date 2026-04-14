@@ -133,7 +133,8 @@ export function GanttBar({ task, rowIndex, scale, theme, onDoubleClick, onContex
         return
       }
 
-      selectTask(task.id, e.ctrlKey || e.metaKey)
+      const mode = e.shiftKey ? 'range' : (e.ctrlKey || e.metaKey) ? 'toggle' : 'single'
+      selectTask(task.id, mode)
     },
     [task.id, selectTask, dragging, linkMode, linkSourceTaskId, setLinkSource, addDependency, dependencies, project?.id]
   )
@@ -150,7 +151,7 @@ export function GanttBar({ task, rowIndex, scale, theme, onDoubleClick, onContex
     (e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      selectTask(task.id, false)
+      selectTask(task.id, 'single')
       onContextMenu?.(task.id, e.clientX, e.clientY)
     },
     [task.id, selectTask, onContextMenu]
