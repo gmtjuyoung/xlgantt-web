@@ -62,6 +62,15 @@ function dbToAssignment(row: Record<string, unknown>): TaskAssignment {
 
 /** DB row → 로컬 TaskDetail 변환 */
 function dbToTaskDetail(row: Record<string, unknown>): TaskDetail {
+  // JSONB → 배열 파싱 (DB에서 string 또는 배열로 올 수 있음)
+  const parseJson = <T>(val: unknown): T[] => {
+    if (!val) return []
+    if (Array.isArray(val)) return val as T[]
+    if (typeof val === 'string') {
+      try { return JSON.parse(val) } catch { return [] }
+    }
+    return []
+  }
   return {
     id: row.id as string,
     task_id: row.task_id as string,
@@ -75,8 +84,8 @@ function dbToTaskDetail(row: Record<string, unknown>): TaskDetail {
     started_at: undefined,
     completed_at: undefined,
     created_at: row.created_at as string,
-    attachments: [],
-    comments: [],
+    attachments: parseJson(row.attachments),
+    comments: parseJson(row.comments),
   }
 }
 
@@ -111,8 +120,8 @@ interface ResourceState {
   deleteTaskDetail: (id: string) => void
   getTaskDetails: (taskId: string) => TaskDetail[]
 
-  // Attachment CRUD
-  addAttachment: (detailId: string, attachment: TaskAttachment) => void
+  // Attachment CRUD (Supabase Storage 연동)
+  uploadAttachment: (detailId: string, file: File) => Promise<TaskAttachment | null>
   removeAttachment: (detailId: string, attachmentId: string) => void
 
   // Comment CRUD
@@ -364,6 +373,21 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
     })
     // 세부항목 기반 진척률/작업량 자동 재계산
     syncTaskProgress(detail.task_id, get().taskDetails)
+    // 세부항목 담당자 → task_assignments 자동 동기화
+    if (detail.assignee_ids && detail.assignee_ids.length > 0) {
+      const existingAssigns = get().assignments.filter((a) => a.task_id === detail.task_id)
+      const existingMemberIds = new Set(existingAssigns.map((a) => a.member_id))
+      for (const memberId of detail.assignee_ids) {
+        if (!existingMemberIds.has(memberId)) {
+          get().addAssignment({
+            id: crypto.randomUUID(),
+            task_id: detail.task_id,
+            member_id: memberId,
+            allocation_percent: 100,
+          })
+        }
+      }
+    }
   },
 
   updateTaskDetail: (id, changes) => {
@@ -417,6 +441,23 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
         details: `상태: ${statusLabel[before.status] || before.status} → ${statusLabel[changes.status] || changes.status}`,
       })
     }
+    // 세부항목 담당자 변경 시 → task_assignments 자동 동기화
+    if (before && changes.assignee_ids) {
+      const newIds = changes.assignee_ids || []
+      const existingAssigns = get().assignments.filter((a) => a.task_id === before.task_id)
+      const existingMemberIds = new Set(existingAssigns.map((a) => a.member_id))
+      for (const memberId of newIds) {
+        if (!existingMemberIds.has(memberId)) {
+          // task_assignment가 없으면 자동 생성
+          get().addAssignment({
+            id: crypto.randomUUID(),
+            task_id: before.task_id,
+            member_id: memberId,
+            allocation_percent: 100,
+          })
+        }
+      }
+    }
     // 세부항목 기반 진척률/작업량 자동 재계산
     if (before) {
       syncTaskProgress(before.task_id, get().taskDetails)
@@ -445,7 +486,40 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
   },
   getTaskDetails: (taskId) => get().taskDetails.filter((d) => d.task_id === taskId),
 
-  addAttachment: (detailId, attachment) => {
+  uploadAttachment: async (detailId, file) => {
+    const detail = get().taskDetails.find((d) => d.id === detailId)
+    if (!detail) return null
+
+    const attachId = crypto.randomUUID()
+    const storagePath = `${detail.task_id}/${detailId}/${attachId}_${file.name}`
+
+    // 1. Supabase Storage에 파일 업로드
+    const { error: uploadErr } = await supabase.storage
+      .from('task-attachments')
+      .upload(storagePath, file, { contentType: file.type, upsert: false })
+    if (uploadErr) {
+      console.error('파일 업로드 실패:', uploadErr.message)
+      return null
+    }
+
+    // 2. 공개 URL 생성
+    const { data: urlData } = supabase.storage
+      .from('task-attachments')
+      .getPublicUrl(storagePath)
+
+    const user = useAuthStore.getState().currentUser
+    const attachment: TaskAttachment = {
+      id: attachId,
+      filename: file.name,
+      size: file.size,
+      type: file.type,
+      storage_path: storagePath,
+      url: urlData.publicUrl,
+      uploaded_by: user?.name || '시스템',
+      uploaded_at: new Date().toISOString(),
+    }
+
+    // 3. 로컬 상태 업데이트
     set((s) => ({
       taskDetails: s.taskDetails.map((d) =>
         d.id === detailId
@@ -453,20 +527,25 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
           : d
       ),
     }))
-    const detail = get().taskDetails.find((d) => d.id === detailId)
-    if (detail) {
-      supabase.from('task_details').update({ attachments: JSON.stringify(detail.attachments || []) }).eq('id', detailId)
-        .then(({ error }) => { if (error) console.error('첨부파일 저장 실패:', error.message) })
-      const task = useTaskStore.getState().tasks.find((t) => t.id === detail.task_id)
-      logActivity({
-        action: 'update',
-        targetType: 'detail',
-        targetId: detailId,
-        targetName: detail.title,
-        parentTaskName: task?.task_name,
-        details: `첨부파일 '${attachment.filename}' 추가`,
-      })
-    }
+
+    // 4. DB JSONB 업데이트
+    const updated = get().taskDetails.find((d) => d.id === detailId)
+    await supabase.from('task_details')
+      .update({ attachments: JSON.stringify(updated?.attachments || []) })
+      .eq('id', detailId)
+      .then(({ error }) => { if (error) console.error('첨부파일 메타 저장 실패:', error.message) })
+
+    const task = useTaskStore.getState().tasks.find((t) => t.id === detail.task_id)
+    logActivity({
+      action: 'update',
+      targetType: 'detail',
+      targetId: detailId,
+      targetName: detail.title,
+      parentTaskName: task?.task_name,
+      details: `첨부파일 '${attachment.filename}' 추가`,
+    })
+
+    return attachment
   },
 
   removeAttachment: (detailId, attachmentId) => {
@@ -480,6 +559,12 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
       ),
     }))
     if (detail && attachment) {
+      // Storage에서 파일 삭제
+      if (attachment.storage_path) {
+        supabase.storage.from('task-attachments').remove([attachment.storage_path])
+          .then(({ error }) => { if (error) console.error('Storage 파일 삭제 실패:', error.message) })
+      }
+      // DB JSONB 업데이트
       const updated = get().taskDetails.find((d) => d.id === detailId)
       supabase.from('task_details').update({ attachments: JSON.stringify(updated?.attachments || []) }).eq('id', detailId)
         .then(({ error }) => { if (error) console.error('첨부파일 삭제 저장 실패:', error.message) })

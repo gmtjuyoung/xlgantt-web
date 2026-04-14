@@ -50,8 +50,9 @@ export interface TaskAttachment {
   filename: string
   size: number        // bytes
   type: string        // MIME type
-  data: string        // Base64 encoded (로컬용)
-  uploaded_by: string // user name
+  storage_path: string // Supabase Storage 경로
+  url: string          // 공개 다운로드 URL
+  uploaded_by: string  // user name
   uploaded_at: string
 }
 

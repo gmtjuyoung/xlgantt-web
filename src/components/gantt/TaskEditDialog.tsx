@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, X, CheckSquare, Square, Paperclip, StickyNote, Maximize2, Minimize2, Link2, Users, FileText, ArrowRight, ArrowLeft } from 'lucide-react'
+import { Plus, X, CheckSquare, Square, Paperclip, StickyNote, Maximize2, Minimize2, Link2, Users, FileText, ArrowRight, ArrowLeft, Upload, Trash2, Image, File as FileIcon, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -62,7 +62,7 @@ function Field({ label, children, className }: { label: string; children: React.
 
 export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   const { tasks, dependencies, updateTask, addDependency, removeDependency } = useTaskStore()
-  const { companies, members, assignments, addAssignment, updateAssignment, removeAssignment, taskDetails, addTaskDetail, updateTaskDetail, deleteTaskDetail } = useResourceStore()
+  const { companies, members, assignments, addAssignment, updateAssignment, removeAssignment, taskDetails, addTaskDetail, updateTaskDetail, deleteTaskDetail, uploadAttachment, removeAttachment } = useResourceStore()
   const task = taskId ? tasks.find((t) => t.id === taskId) : null
 
   // Form state
@@ -86,6 +86,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   const [newAssignPercent, setNewAssignPercent] = useState('100')
   const [newDetailTitle, setNewDetailTitle] = useState('')
   const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set())
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     if (task) {
@@ -416,12 +417,97 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                 </div>
               </Section>
 
-              <Section icon={Paperclip} title="첨부파일">
-                <div className="border border-dashed border-border/50 rounded-md p-4 text-center hover:border-primary/40 transition-colors cursor-pointer group/upload">
-                  <Paperclip className="h-4 w-4 mx-auto mb-1 text-muted-foreground/40 group-hover/upload:text-primary/50 transition-colors" />
-                  <p className="text-xs text-muted-foreground/60">파일을 드래그하거나 클릭</p>
-                  <p className="text-[10px] text-muted-foreground/40 mt-0.5">DB 연결 후 활성화</p>
+              <Section icon={Paperclip} title="첨부파일" count={currentDetails.reduce((sum, d) => sum + (d.attachments?.length || 0), 0)}>
+                {/* 파일 업로드 영역 */}
+                <div
+                  className={cn(
+                    "border border-dashed rounded-md p-3 text-center transition-colors cursor-pointer group/upload",
+                    uploading ? "border-primary/40 bg-primary/5" : "border-border/50 hover:border-primary/40"
+                  )}
+                  onClick={() => {
+                    if (uploading || currentDetails.length === 0) return
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.multiple = true
+                    input.accept = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.7z'
+                    input.onchange = async (e) => {
+                      const files = (e.target as HTMLInputElement).files
+                      if (!files || files.length === 0) return
+                      setUploading(true)
+                      // 첫 번째 세부항목에 첨부 (또는 선택된 세부항목)
+                      const targetDetail = currentDetails[0]
+                      for (const file of Array.from(files)) {
+                        await uploadAttachment(targetDetail.id, file)
+                      }
+                      setUploading(false)
+                    }
+                    input.click()
+                  }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  onDrop={async (e) => {
+                    e.preventDefault(); e.stopPropagation()
+                    if (uploading || currentDetails.length === 0) return
+                    const files = e.dataTransfer.files
+                    if (!files || files.length === 0) return
+                    setUploading(true)
+                    const targetDetail = currentDetails[0]
+                    for (const file of Array.from(files)) {
+                      await uploadAttachment(targetDetail.id, file)
+                    }
+                    setUploading(false)
+                  }}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 mx-auto mb-1 text-primary animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mx-auto mb-1 text-muted-foreground/40 group-hover/upload:text-primary/50 transition-colors" />
+                  )}
+                  <p className="text-xs text-muted-foreground/60">
+                    {currentDetails.length === 0 ? '세부항목을 먼저 추가하세요' : uploading ? '업로드 중...' : '파일을 드래그하거나 클릭'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/40 mt-0.5">이미지, PDF, 문서, 엑셀 등 (50MB 이하)</p>
                 </div>
+
+                {/* 첨부파일 목록 */}
+                {currentDetails.some((d) => (d.attachments?.length || 0) > 0) && (
+                  <div className="mt-2 space-y-1">
+                    {currentDetails.flatMap((d) =>
+                      (d.attachments || []).map((att) => {
+                        const isImage = att.type?.startsWith('image/')
+                        const sizeStr = att.size < 1024 ? `${att.size}B`
+                          : att.size < 1048576 ? `${(att.size / 1024).toFixed(1)}KB`
+                          : `${(att.size / 1048576).toFixed(1)}MB`
+                        return (
+                          <div key={att.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors group/att">
+                            {isImage ? (
+                              <Image className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                            ) : (
+                              <FileIcon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                            )}
+                            <a
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-foreground/80 hover:text-primary truncate flex-1"
+                              title={att.filename}
+                            >
+                              {att.filename}
+                            </a>
+                            <span className="text-[10px] text-muted-foreground/50 flex-shrink-0">{sizeStr}</span>
+                            <span className="text-[10px] text-muted-foreground/40 flex-shrink-0">{att.uploaded_by}</span>
+                            <Button
+                              variant="ghost" size="icon"
+                              className="h-4 w-4 flex-shrink-0 opacity-0 group-hover/att:opacity-60 hover:!opacity-100"
+                              onClick={(e) => { e.stopPropagation(); removeAttachment(d.id, att.id) }}
+                            >
+                              <Trash2 className="h-2.5 w-2.5 text-red-500" />
+                            </Button>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
               </Section>
             </div>
           </div>

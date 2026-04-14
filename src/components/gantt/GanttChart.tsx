@@ -210,29 +210,8 @@ export function GanttChart({
             />
           ))}
 
-          {/* Today line */}
-          {ganttOptions.showTodayLine && (
-            <>
-              {/* Today line glow */}
-              <line
-                x1={todayX} y1={0} x2={todayX} y2={totalHeight}
-                stroke="#ef4444" strokeWidth={4} opacity={0.08}
-              />
-              {/* Today line */}
-              <line
-                x1={todayX} y1={0} x2={todayX} y2={totalHeight}
-                stroke="#ef4444" strokeWidth={1.5}
-              />
-              {/* Today badge */}
-              <rect x={todayX - 1} y={2} width={42} height={20} rx={4} fill="#ef4444" />
-              <text x={todayX + 20} y={16} textAnchor="middle" fontSize={12} fill="white" fontWeight="600">
-                Today
-              </text>
-            </>
-          )}
-
-          {/* Status Date line (기준일) */}
-          {statusDateX > 0 && ganttOptions.showTodayLine && (
+          {/* Status Date line (기준일) - Today와 다른 날짜일 때만, Today보다 먼저 렌더 */}
+          {statusDateX > 0 && ganttOptions.showTodayLine && Math.abs(statusDateX - todayX) > 5 && (
             <>
               <line
                 x1={statusDateX} y1={0} x2={statusDateX} y2={totalHeight}
@@ -242,6 +221,16 @@ export function GanttChart({
               <text x={statusDateX + 23} y={16} textAnchor="middle" fontSize={11} fill="white" fontWeight="600">
                 기준일
               </text>
+            </>
+          )}
+
+          {/* Today line - 기준일보다 위에 표시 (SVG는 나중에 그린 것이 위) */}
+          {ganttOptions.showTodayLine && (
+            <>
+              <line x1={todayX} y1={0} x2={todayX} y2={totalHeight} stroke="#ef4444" strokeWidth={4} opacity={0.08} />
+              <line x1={todayX} y1={0} x2={todayX} y2={totalHeight} stroke="#ef4444" strokeWidth={1.5} />
+              <rect x={todayX - 1} y={2} width={46} height={20} rx={4} fill="#ef4444" />
+              <text x={todayX + 22} y={16} textAnchor="middle" fontSize={12} fill="white" fontWeight="600">Today</text>
             </>
           )}
 

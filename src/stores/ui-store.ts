@@ -4,6 +4,7 @@ import type { ZoomLevel } from '@/lib/types'
 import { DEFAULT_VISIBLE_COLUMNS, REQUIRED_COLUMNS, getTotalColumnWidth } from '@/lib/column-defs'
 
 export type ViewMode = 'gantt' | 'progress' | 'analysis' | 'workload' | 'calendar' | 'resources' | 'settings' | 'activity' | 'mytasks' | 'memberTasks'
+export type MobileTab = 'mytasks' | 'progress' | 'activity'
 export type FilterStatus = 'all' | 'delayed' | 'completed' | 'in_progress'
 
 export interface GanttOptions {
@@ -38,8 +39,11 @@ interface UIState {
   searchQuery: string
   filterStatus: FilterStatus
   visibleColumns: string[] // 표시할 컬럼 ID 목록
+  columnWidths: Record<string, number> // 컬럼별 커스텀 너비 (localStorage 저장)
   showProgressLine: boolean // Progress Line 표시 여부
   ganttOptions: GanttOptions // 간트 차트 옵션
+  mobileActiveTab: MobileTab // 모바일 하단 탭
+  mobileTaskId: string | null // 모바일 태스크 상세 시트
 
   setActiveView: (view: ViewMode) => void
   setZoomLevel: (level: ZoomLevel) => void
@@ -55,9 +59,13 @@ interface UIState {
   toggleColumn: (columnId: string) => void
   moveColumn: (columnId: string, direction: 'up' | 'down') => void
   resetColumns: () => void
+  setColumnWidth: (columnId: string, width: number) => void
+  resetColumnWidths: () => void
   toggleProgressLine: () => void
   setGanttOptions: (options: Partial<GanttOptions>) => void
   resetGanttOptions: () => void
+  setMobileActiveTab: (tab: MobileTab) => void
+  setMobileTaskId: (id: string | null) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -74,8 +82,11 @@ export const useUIStore = create<UIState>()(
       searchQuery: '',
       filterStatus: 'all' as FilterStatus,
       visibleColumns: [...DEFAULT_VISIBLE_COLUMNS],
+      columnWidths: {},
       showProgressLine: false,
       ganttOptions: { ...DEFAULT_GANTT_OPTIONS },
+      mobileActiveTab: 'mytasks' as MobileTab,
+      mobileTaskId: null,
 
       setActiveView: (activeView) => set({ activeView }),
       setZoomLevel: (zoomLevel) => set({ zoomLevel }),
@@ -101,7 +112,7 @@ export const useUIStore = create<UIState>()(
           : [...s.visibleColumns, columnId]
         return {
           visibleColumns: newColumns,
-          tableWidth: getTotalColumnWidth(newColumns) + 40,
+          tableWidth: getTotalColumnWidth(newColumns, s.columnWidths) + 40,
         }
       }),
       moveColumn: (columnId, direction) => set((s) => {
@@ -115,16 +126,40 @@ export const useUIStore = create<UIState>()(
       }),
       resetColumns: () => set({
         visibleColumns: [...DEFAULT_VISIBLE_COLUMNS],
-        tableWidth: getTotalColumnWidth(DEFAULT_VISIBLE_COLUMNS) + 40,
+        columnWidths: {},
+        tableWidth: getTotalColumnWidth(DEFAULT_VISIBLE_COLUMNS, {}) + 40,
       }),
+      setColumnWidth: (columnId, width) => set((s) => {
+        const newWidths = { ...s.columnWidths, [columnId]: Math.max(30, width) }
+        return {
+          columnWidths: newWidths,
+          tableWidth: getTotalColumnWidth(s.visibleColumns, newWidths) + 40,
+        }
+      }),
+      resetColumnWidths: () => set({ columnWidths: {} }),
       toggleProgressLine: () => set((s) => ({ showProgressLine: !s.showProgressLine })),
       setGanttOptions: (options) => set((s) => ({
         ganttOptions: { ...s.ganttOptions, ...options },
       })),
       resetGanttOptions: () => set({ ganttOptions: { ...DEFAULT_GANTT_OPTIONS } }),
+      setMobileActiveTab: (mobileActiveTab) => set({ mobileActiveTab }),
+      setMobileTaskId: (mobileTaskId) => set({ mobileTaskId }),
     }),
     {
       name: 'xlgantt-ui-settings',
+      // localStorage에서 복원 시 새 컬럼 자동 추가
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Record<string, unknown>) }
+        // assignees 컬럼이 visibleColumns에 없으면 task_name 뒤에 삽입
+        const cols = (merged as UIState).visibleColumns || [...DEFAULT_VISIBLE_COLUMNS]
+        if (!cols.includes('assignees') && DEFAULT_VISIBLE_COLUMNS.includes('assignees')) {
+          const nameIdx = cols.indexOf('task_name')
+          cols.splice(nameIdx >= 0 ? nameIdx + 1 : 2, 0, 'assignees')
+          ;(merged as Record<string, unknown>).visibleColumns = cols
+          ;(merged as Record<string, unknown>).tableWidth = getTotalColumnWidth(cols, (merged as UIState).columnWidths || {}) + 40
+        }
+        return merged as UIState
+      },
       // 런타임 상태는 저장하지 않음 (검색어, 링크모드 등)
       partialize: (state) => ({
         zoomLevel: state.zoomLevel,
@@ -132,6 +167,7 @@ export const useUIStore = create<UIState>()(
         tableCollapsed: state.tableCollapsed,
         language: state.language,
         visibleColumns: state.visibleColumns,
+        columnWidths: state.columnWidths,
         ganttOptions: state.ganttOptions,
       }),
     }

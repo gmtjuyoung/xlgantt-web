@@ -136,12 +136,24 @@ export function ProjectSettings() {
                 <CalendarClock className="h-3 w-3" />
                 기준일자 (Status Date)
               </label>
-              <DatePicker
-                value={project.status_date || ''}
-                onChange={(d) => updateProject({ status_date: d || undefined })}
-                placeholder="기준일자 선택"
-                className="mt-1 h-9"
-              />
+              <div className="flex items-center gap-2 mt-1">
+                <DatePicker
+                  value={project.status_date || ''}
+                  onChange={(d) => updateProject({ status_date: d || undefined })}
+                  placeholder="기준일자 선택"
+                  className="h-9 flex-1"
+                />
+                {project.status_date && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 text-xs"
+                    onClick={() => updateProject({ status_date: undefined })}
+                  >
+                    해제
+                  </Button>
+                )}
+              </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 진척률 산출 시 기준이 되는 날짜입니다. 미설정 시 오늘 날짜를 사용합니다.
               </p>

@@ -1,9 +1,9 @@
-import { type RefObject, useState, useCallback, useMemo, useEffect } from 'react'
+import { type RefObject, useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { Task } from '@/lib/types'
 import { TaskRow } from './TaskRow'
 import { GanttContextMenu, type ContextMenuState } from './GanttContextMenu'
 import { useUIStore } from '@/stores/ui-store'
-import { getVisibleColumnDefs, getTotalColumnWidth } from '@/lib/column-defs'
+import { getVisibleColumnDefs, getTotalColumnWidth, ALL_COLUMNS } from '@/lib/column-defs'
 import { useDragReorder } from '@/hooks/use-drag-reorder'
 
 interface TaskTableProps {
@@ -16,6 +16,11 @@ interface TaskTableProps {
 export function TaskTable({ tasks, scrollRef, onScroll, onDoubleClickTask }: TaskTableProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const visibleColumns = useUIStore((s) => s.visibleColumns)
+  const columnWidths = useUIStore((s) => s.columnWidths)
+  const setColumnWidth = useUIStore((s) => s.setColumnWidth)
+
+  // 컬럼 리사이즈 상태
+  const resizeRef = useRef<{ colId: string; startX: number; startW: number } | null>(null)
 
   const {
     dragState,
@@ -31,9 +36,48 @@ export function TaskTable({ tasks, scrollRef, onScroll, onDoubleClickTask }: Tas
     scrollContainerRef.current = scrollRef.current
   })
 
-  // 표시할 컬럼 정의 목록
-  const columns = useMemo(() => getVisibleColumnDefs(visibleColumns), [visibleColumns])
-  const totalWidth = useMemo(() => getTotalColumnWidth(visibleColumns), [visibleColumns])
+  // 표시할 컬럼 정의 목록 (커스텀 너비 적용)
+  const columns = useMemo(() => getVisibleColumnDefs(visibleColumns, columnWidths), [visibleColumns, columnWidths])
+  const totalWidth = useMemo(() => getTotalColumnWidth(visibleColumns, columnWidths), [visibleColumns, columnWidths])
+
+  // 컬럼 드래그 리사이즈 핸들러
+  const handleResizeStart = useCallback((e: React.MouseEvent, colId: string, currentWidth: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    resizeRef.current = { colId, startX: e.clientX, startW: currentWidth }
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return
+      const delta = ev.clientX - resizeRef.current.startX
+      const newWidth = Math.max(30, resizeRef.current.startW + delta)
+      setColumnWidth(resizeRef.current.colId, newWidth)
+    }
+    const onMouseUp = () => {
+      resizeRef.current = null
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [setColumnWidth])
+
+  // 더블클릭 시 컬럼 자동 확장 (기본 너비의 2배 또는 원래 너비로 토글)
+  const handleHeaderDoubleClick = useCallback((colId: string) => {
+    const defaultCol = ALL_COLUMNS.find((c) => c.id === colId)
+    if (!defaultCol) return
+    const currentWidth = columnWidths[colId] || defaultCol.width
+    const expandedWidth = defaultCol.width * 2.5
+    // 이미 확장됐으면 원래 너비로, 아니면 확장
+    if (currentWidth > defaultCol.width * 1.5) {
+      setColumnWidth(colId, defaultCol.width)
+    } else {
+      setColumnWidth(colId, expandedWidth)
+    }
+  }, [columnWidths, setColumnWidth])
 
   const handleRowContextMenu = useCallback((taskId: string, x: number, y: number) => {
     setContextMenu({ taskId, x, y })
@@ -59,10 +103,17 @@ export function TaskTable({ tasks, scrollRef, onScroll, onDoubleClickTask }: Tas
         {columns.map((col) => (
           <div
             key={col.id}
-            style={{ width: col.width, minWidth: col.width }}
-            className="px-2 flex items-center justify-center border-r border-border/30 truncate"
+            style={{ width: col.width, minWidth: 30 }}
+            className="relative px-2 flex items-center justify-center border-r border-border/30 truncate select-none"
+            onDoubleClick={() => handleHeaderDoubleClick(col.id)}
           >
             {col.label}
+            {/* 리사이즈 핸들 (오른쪽 가장자리) */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-20"
+              onMouseDown={(e) => handleResizeStart(e, col.id, col.width)}
+              onDoubleClick={(e) => e.stopPropagation()}
+            />
           </div>
         ))}
       </div>

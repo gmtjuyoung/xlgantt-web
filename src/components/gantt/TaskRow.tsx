@@ -136,7 +136,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
     }
 
     // 담당자 컬럼 - resource-store에서 읽기
-    if (col.id === 'deliverables') {
+    if (col.id === 'assignees') {
       return (
         <div
           key={col.id}
@@ -293,7 +293,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
         className="flex items-center justify-center border-r"
       >
         {isReadOnly ? (
-          <div className={cn("w-full px-2 truncate select-none text-center", task.is_group && "bg-muted/60 text-muted-foreground")}>
+          <div className={cn("w-full px-2 truncate select-none text-center", task.is_group && task.wbs_level !== 1 && "bg-muted/60 text-muted-foreground", task.is_group && task.wbs_level === 1 && "bg-muted/40")}>
             {value != null ? String(value) : ''}
           </div>
         ) : (
@@ -314,9 +314,10 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
       className={cn(
         'group/row flex border-b border-border/25 cursor-pointer text-sm transition-all duration-100 relative',
         isSelected && 'bg-primary/8 border-l-2 border-l-primary',
-        !isSelected && task.is_group && 'bg-muted/40 font-semibold',
+        !isSelected && task.is_group && task.wbs_level === 1 && 'bg-slate-100 dark:bg-slate-800/60 font-bold border-b-border/50 [&_*]:!text-slate-700 dark:[&_*]:!text-slate-200',
+        !isSelected && task.is_group && task.wbs_level === 2 && 'bg-blue-50/60 dark:bg-blue-900/20 font-semibold',
         !isSelected && !task.is_group && 'hover:bg-accent/40',
-        !isSelected && !task.is_group && rowIndex % 2 === 1 && 'bg-muted/15',
+        !isSelected && !task.is_group && rowIndex % 2 === 1 && 'bg-muted/20',
         isDragging && 'opacity-40',
       )}
       style={{ height: ROW_HEIGHT, minWidth: totalWidth }}

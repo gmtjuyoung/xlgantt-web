@@ -72,7 +72,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
     members,
     assignments,
     updateTaskDetail,
-    addAttachment,
+    uploadAttachment,
     removeAttachment,
     addComment,
     deleteComment,
@@ -196,9 +196,9 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
     }
   }, [open, detail?.description, isFullscreen, autoResizeTextarea])
 
-  // File handling
+  // File handling (Supabase Storage)
   const handleFiles = useCallback(
-    (files: FileList | File[]) => {
+    async (files: FileList | File[]) => {
       if (!detail || !currentUser) return
       const fileArr = Array.from(files)
       for (const file of fileArr) {
@@ -206,31 +206,18 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
           alert(`파일 "${file.name}"이(가) 5MB를 초과합니다.`)
           continue
         }
-        const reader = new FileReader()
-        reader.onload = () => {
-          const base64 = reader.result as string
-          addAttachment(detail.id, {
-            id: crypto.randomUUID(),
-            filename: file.name,
-            size: file.size,
-            type: file.type,
-            data: base64,
-            uploaded_by: currentUser.name,
-            uploaded_at: new Date().toISOString(),
-          })
-        }
-        reader.readAsDataURL(file)
+        await uploadAttachment(detail.id, file)
       }
     },
-    [detail, currentUser, addAttachment]
+    [detail, currentUser, uploadAttachment]
   )
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent) => {
       e.preventDefault()
       setIsDragOver(false)
       if (e.dataTransfer.files.length > 0) {
-        handleFiles(e.dataTransfer.files)
+        await handleFiles(e.dataTransfer.files)
       }
     },
     [handleFiles]
@@ -404,11 +391,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   // ─── Attachments section ───
   const renderAttachments = () => (
     <div>
-      <div className="flex items-center gap-2 mb-2">
-        <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">첨부파일</span>
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+        <div className="w-1 h-4 bg-primary rounded-full" />
+        <Paperclip className="h-4 w-4 text-primary" />
+        <span className="text-sm font-bold text-foreground">첨부파일</span>
         {attachments.length > 0 && (
-          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{attachments.length}</Badge>
+          <Badge className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20">{attachments.length}</Badge>
         )}
       </div>
 
@@ -421,12 +409,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
               className="group flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors max-w-[220px] cursor-pointer"
               onClick={() => {
                 // 클릭 시 다운로드 또는 새 탭에서 열기
-                if (att.data) {
+                if (att.url) {
                   if (isImageType(att.type)) {
-                    window.open(att.data, '_blank')
+                    window.open(att.url, '_blank')
                   } else {
                     const link = document.createElement('a')
-                    link.href = att.data
+                    link.href = att.url
                     link.download = att.filename
                     link.click()
                   }
@@ -436,7 +424,7 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
             >
               {isImageType(att.type) ? (
                 <img
-                  src={att.data}
+                  src={att.url}
                   alt={att.filename}
                   className="w-8 h-8 rounded object-cover flex-shrink-0"
                 />
@@ -492,9 +480,10 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   // ─── Memo section ───
   const renderMemo = () => (
     <div>
-      <div className="flex items-center gap-2 mb-2">
-        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">메모</span>
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+        <div className="w-1 h-4 bg-primary rounded-full" />
+        <FileText className="h-4 w-4 text-primary" />
+        <span className="text-sm font-bold text-foreground">메모</span>
       </div>
       <textarea
         ref={(el) => {
@@ -518,11 +507,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   // ─── Comments section ───
   const renderComments = () => (
     <div>
-      <div className="flex items-center gap-2 mb-2">
-        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">코멘트</span>
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+        <div className="w-1 h-4 bg-primary rounded-full" />
+        <MessageSquare className="h-4 w-4 text-primary" />
+        <span className="text-sm font-bold text-foreground">코멘트</span>
         {comments.length > 0 && (
-          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{comments.length}</Badge>
+          <Badge className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20">{comments.length}</Badge>
         )}
       </div>
 

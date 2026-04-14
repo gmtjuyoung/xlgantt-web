@@ -18,7 +18,8 @@ export const ALL_COLUMNS: ColumnDef[] = [
   // 기본 표시 컬럼 (현재 8개)
   { id: 'wbs_code',         label: 'WBS',        width: 65,  visible: true,  align: 'center', required: true, type: 'text' },
   { id: 'task_name',        label: '작업명',      width: 260, visible: true,  align: 'left',   required: true, type: 'text' },
-  { id: 'deliverables',     label: '담당',        width: 100, visible: true,  align: 'center', type: 'text' },
+  { id: 'assignees',        label: '담당',        width: 100, visible: true,  align: 'center', type: 'text' },
+  { id: 'deliverables',     label: '산출물',      width: 150, visible: true,  align: 'left',   type: 'text' },
   { id: 'planned_start',    label: '시작일',      width: 110, visible: true,  align: 'center', type: 'date',   readOnlyForGroup: true },
   { id: 'planned_end',      label: '완료일',      width: 110, visible: true,  align: 'center', type: 'date',   readOnlyForGroup: true },
   { id: 'total_duration',   label: '기간',        width: 55,  visible: true,  align: 'right',  type: 'number', readOnlyForGroup: true },
@@ -53,13 +54,20 @@ export function getColumnDef(id: string): ColumnDef | undefined {
   return ALL_COLUMNS.find((col) => col.id === id)
 }
 
-/** 표시할 컬럼 정의 목록 반환 (visibleIds 순서 유지) */
-export function getVisibleColumnDefs(visibleIds: string[]): ColumnDef[] {
+/** 표시할 컬럼 정의 목록 반환 (visibleIds 순서 유지, 커스텀 너비 적용) */
+export function getVisibleColumnDefs(visibleIds: string[], customWidths?: Record<string, number>): ColumnDef[] {
   const colMap = new Map(ALL_COLUMNS.map((col) => [col.id, col]))
-  return visibleIds.map((id) => colMap.get(id)).filter((col): col is ColumnDef => !!col)
+  return visibleIds.map((id) => {
+    const col = colMap.get(id)
+    if (!col) return null
+    if (customWidths && customWidths[id]) {
+      return { ...col, width: customWidths[id] }
+    }
+    return col
+  }).filter((col): col is ColumnDef => !!col)
 }
 
 /** 표시 컬럼의 총 너비 계산 */
-export function getTotalColumnWidth(visibleIds: string[]): number {
-  return getVisibleColumnDefs(visibleIds).reduce((sum, col) => sum + col.width, 0)
+export function getTotalColumnWidth(visibleIds: string[], customWidths?: Record<string, number>): number {
+  return getVisibleColumnDefs(visibleIds, customWidths).reduce((sum, col) => sum + col.width, 0)
 }

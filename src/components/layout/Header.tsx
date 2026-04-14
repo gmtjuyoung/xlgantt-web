@@ -265,6 +265,15 @@ export function Header() {
           placeholder="선택"
           className="h-7 text-xs font-medium w-[190px]"
         />
+        {project?.status_date && (
+          <button
+            onClick={() => updateProject({ status_date: undefined })}
+            className="p-0.5 rounded hover:bg-red-50 text-muted-foreground/50 hover:text-red-500 transition-colors"
+            title="기준일 해제"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="w-px h-5 bg-border/30 flex-shrink-0" />

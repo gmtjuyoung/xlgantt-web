@@ -16,7 +16,11 @@ import { useTaskStore } from '@/stores/task-store'
 import { useResourceStore } from '@/stores/resource-store'
 import { useUIStore } from '@/stores/ui-store'
 import { useUndoStore } from '@/stores/undo-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { SAMPLE_PROJECT, SAMPLE_TASKS, SAMPLE_DEPENDENCIES } from '@/lib/sample-data'
+import { useIsMobile } from '@/hooks/use-is-mobile'
+import { MobileShell } from '@/components/mobile/MobileShell'
+import { MobileContent } from '@/components/mobile/MobileContent'
 
 function MainContent() {
   const activeView = useUIStore((s) => s.activeView)
@@ -52,6 +56,7 @@ export function ProjectWorkspace() {
   const { switchProject, currentProject, setProject, loadProjectMembers } = useProjectStore()
   const { setTasks, setDependencies, loadTasks, loadDependencies } = useTaskStore()
   const { loadResources } = useResourceStore()
+  const fetchAllUsers = useAuthStore((s) => s.fetchAllUsers)
   const clearUndo = useUndoStore((s) => s.clear)
 
   useEffect(() => {
@@ -69,6 +74,7 @@ export function ProjectWorkspace() {
           loadDependencies(projectId),
           loadResources(projectId),
           loadProjectMembers(projectId),
+          fetchAllUsers(),
         ])
         // 서버에서 작업 데이터가 비어있고, 샘플 프로젝트인 경우 폴백
         const { tasks } = useTaskStore.getState()
@@ -97,6 +103,16 @@ export function ProjectWorkspace() {
     loadFromServer()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
+
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return (
+      <MobileShell>
+        <MobileContent />
+      </MobileShell>
+    )
+  }
 
   return (
     <AppShell>

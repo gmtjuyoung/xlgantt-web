@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Search, Users, ClipboardList, ExternalLink, UserCheck, List, LayoutGrid, ChevronDown, ChevronRight, Clock } from 'lucide-react'
+import { Search, Users, ClipboardList, ExternalLink, UserCheck, List, LayoutGrid, ChevronDown, ChevronRight, Clock, ArrowUpDown } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { useResourceStore } from '@/stores/resource-store'
 import { useTaskStore } from '@/stores/task-store'
@@ -80,6 +80,9 @@ export function MemberTasksView() {
   const [detailViewMode, setDetailViewMode] = useState<'list' | 'card'>('list')
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
   const [cardDetailId, setCardDetailId] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'wbs' | 'name' | 'allocation' | 'date' | 'progress'>('wbs')
+  const [sortAsc, setSortAsc] = useState(true)
+  const [taskSearchQuery, setTaskSearchQuery] = useState('')
 
   const handleOpenTask = useCallback((taskId: string) => {
     setEditTaskId(taskId)
@@ -91,25 +94,49 @@ export function MemberTasksView() {
     setEditTaskId(null)
   }, [])
 
-  // Task count per member (non-group tasks only)
+  // Task count per member (non-group tasks only, task_assignments + detail assignee_ids)
   const memberTaskCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
+    const memberTasks: Record<string, Set<string>> = {}
+    // 1. task_assignments 기반
     for (const a of assignments) {
       const task = tasks.find((t) => t.id === a.task_id && !t.is_group)
       if (task) {
-        counts[a.member_id] = (counts[a.member_id] || 0) + 1
+        if (!memberTasks[a.member_id]) memberTasks[a.member_id] = new Set()
+        memberTasks[a.member_id].add(task.id)
       }
     }
+    // 2. task_details.assignee_ids 기반 (세부항목 담당자도 포함)
+    for (const detail of taskDetails) {
+      const task = tasks.find((t) => t.id === detail.task_id && !t.is_group)
+      if (!task) continue
+      const assigneeIds = detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])
+      for (const memberId of assigneeIds) {
+        if (!memberTasks[memberId]) memberTasks[memberId] = new Set()
+        memberTasks[memberId].add(task.id)
+      }
+    }
+    const counts: Record<string, number> = {}
+    for (const [memberId, taskSet] of Object.entries(memberTasks)) {
+      counts[memberId] = taskSet.size
+    }
     return counts
-  }, [assignments, tasks])
+  }, [assignments, tasks, taskDetails])
 
-  // Completion rate per member
+  // Completion rate per member (task_assignments + detail assignee_ids)
   const memberCompletionRates = useMemo(() => {
     const rates: Record<string, number> = {}
     for (const member of members) {
-      const memberAssigns = assignments.filter((a) => a.member_id === member.id)
-      const memberTasks = memberAssigns
-        .map((a) => tasks.find((t) => t.id === a.task_id && !t.is_group))
+      // task_assignments + detail assignee_ids 합산
+      const taskIdSet = new Set<string>()
+      for (const a of assignments) {
+        if (a.member_id === member.id) taskIdSet.add(a.task_id)
+      }
+      for (const d of taskDetails) {
+        const ids = d.assignee_ids || (d.assignee_id ? [d.assignee_id] : [])
+        if (ids.includes(member.id)) taskIdSet.add(d.task_id)
+      }
+      const memberTasks = [...taskIdSet]
+        .map((tid) => tasks.find((t) => t.id === tid && !t.is_group))
         .filter(Boolean) as Task[]
       if (memberTasks.length === 0) {
         rates[member.id] = 0
@@ -119,17 +146,17 @@ export function MemberTasksView() {
       rates[member.id] = totalProgress / memberTasks.length
     }
     return rates
-  }, [members, assignments, tasks])
+  }, [members, assignments, tasks, taskDetails])
 
-  // Project role per member (match by email or name)
+  // Project role per member (match by email or name, case-insensitive)
   const memberProjectRoles = useMemo(() => {
     if (!project) return {} as Record<string, string>
     const currentProjectMembers = projectMembers.filter((m) => m.projectId === project.id)
     const roles: Record<string, string> = {}
     for (const member of members) {
-      // Find matching user by email or name
+      // Find matching user by email (case-insensitive) or name
       const matchedUser = allUsers.find(
-        (u) => (member.email && u.email === member.email) || u.name === member.name
+        (u) => (member.email && u.email?.toLowerCase() === member.email.toLowerCase()) || u.name === member.name
       )
       if (matchedUser) {
         const pm = currentProjectMembers.find((m) => m.userId === matchedUser.id)
@@ -163,29 +190,69 @@ export function MemberTasksView() {
       const task = tasks.find((t) => t.id === a.task_id && !t.is_group)
       if (task) taskIds.add(task.id)
     }
+    for (const d of taskDetails) {
+      if ((d.assignee_ids?.length || 0) > 0 || d.assignee_id) {
+        const task = tasks.find((t) => t.id === d.task_id && !t.is_group)
+        if (task) taskIds.add(task.id)
+      }
+    }
     return taskIds.size
-  }, [assignments, tasks])
+  }, [assignments, tasks, taskDetails])
 
-  // Selected member tasks
+  // WBS 코드 비교 (자연순: 1.1 < 1.2 < 1.10 < 2.1)
+  const compareWbs = useCallback((a: string, b: string) => {
+    const pa = (a || '').split('.').map(Number)
+    const pb = (b || '').split('.').map(Number)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] ?? 0, nb = pb[i] ?? 0
+      if (na !== nb) return na - nb
+    }
+    return 0
+  }, [])
+
+  // Selected member tasks (task_assignments + detail assignee_ids)
   const selectedMemberTasks: MemberTaskInfo[] = useMemo(() => {
     if (!selectedMemberId) return []
     const memberAssigns = assignments.filter((a) => a.member_id === selectedMemberId)
-    const result: MemberTaskInfo[] = []
-    for (const assign of memberAssigns) {
-      const task = tasks.find((t) => t.id === assign.task_id && !t.is_group)
-      if (task) {
-        if (hideDone && task.actual_progress >= 1) continue
-        const details = taskDetails.filter((d) => d.task_id === task.id).sort((a, b) => a.sort_order - b.sort_order)
-        result.push({ task, assignment: assign, details: hideDone ? details.filter((d) => d.status !== 'done') : details })
+    const taskIdSet = new Set(memberAssigns.map((a) => a.task_id))
+    for (const detail of taskDetails) {
+      const ids = detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])
+      if (ids.includes(selectedMemberId)) {
+        taskIdSet.add(detail.task_id)
       }
     }
+    const result: MemberTaskInfo[] = []
+    for (const taskId of taskIdSet) {
+      const task = tasks.find((t) => t.id === taskId && !t.is_group)
+      if (!task) continue
+      if (hideDone && task.actual_progress >= 1) continue
+      const assign = memberAssigns.find((a) => a.task_id === taskId) || { id: '', task_id: taskId, member_id: selectedMemberId, allocation_percent: 100 }
+      const dets = taskDetails.filter((d) => d.task_id === task.id).sort((a, b) => a.sort_order - b.sort_order)
+      result.push({ task, assignment: assign, details: hideDone ? dets.filter((d) => d.status !== 'done') : dets })
+    }
+    // 정렬
     result.sort((a, b) => {
-      const aDate = a.task.planned_start || '9999'
-      const bDate = b.task.planned_start || '9999'
-      return aDate.localeCompare(bDate)
+      let cmp = 0
+      if (sortBy === 'wbs') cmp = compareWbs(a.task.wbs_code, b.task.wbs_code)
+      else if (sortBy === 'name') cmp = (a.task.task_name || '').localeCompare(b.task.task_name || '', 'ko')
+      else if (sortBy === 'date') cmp = (a.task.planned_start || '9999').localeCompare(b.task.planned_start || '9999')
+      else if (sortBy === 'progress') cmp = (a.task.actual_progress || 0) - (b.task.actual_progress || 0)
+      else if (sortBy === 'allocation') cmp = (a.assignment.allocation_percent || 0) - (b.assignment.allocation_percent || 0)
+      return sortAsc ? cmp : -cmp
     })
     return result
-  }, [selectedMemberId, assignments, tasks, taskDetails, hideDone])
+  }, [selectedMemberId, assignments, tasks, taskDetails, hideDone, sortBy, sortAsc, compareWbs])
+
+  // 작업명 검색 필터
+  const filteredMemberTasks = useMemo(() => {
+    if (!taskSearchQuery.trim()) return selectedMemberTasks
+    const q = taskSearchQuery.trim().toLowerCase()
+    return selectedMemberTasks.filter(({ task, details }) =>
+      task.task_name?.toLowerCase().includes(q) ||
+      task.wbs_code?.toLowerCase().includes(q) ||
+      details.some((d) => d.title.toLowerCase().includes(q))
+    )
+  }, [selectedMemberTasks, taskSearchQuery])
 
   const selectedMember = selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null
   const selectedMemberCompany = selectedMember ? companies.find((c) => c.id === selectedMember.company_id) : null
@@ -371,23 +438,65 @@ export function MemberTasksView() {
               </div>
             </div>
 
+            {/* 작업 검색 + 완료 숨기기 */}
+            <div className="px-4 py-2 border-b border-border/30 bg-muted/10 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                <Input
+                  placeholder="작업명/WBS 검색..."
+                  value={taskSearchQuery}
+                  onChange={(e) => setTaskSearchQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0">
+                <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} className="w-3 h-3 rounded accent-primary" />
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">완료 숨기기</span>
+              </label>
+            </div>
+
             {/* Task list */}
             <div className="flex-1 overflow-y-auto">
-              {selectedMemberTasks.length === 0 ? (
+              {filteredMemberTasks.length === 0 ? (
                 <div className="px-5 py-8 text-center text-xs text-muted-foreground/50">
-                  배정된 작업이 없습니다
+                  {taskSearchQuery ? '검색 결과가 없습니다' : '배정된 작업이 없습니다'}
                 </div>
               ) : (
                 <div>
-                  {/* Table header */}
+                  {/* Table header with sort */}
                   <div className="flex items-center px-5 py-2 bg-muted/20 border-b border-border/30 sticky top-0 z-10">
                     <div className="grid grid-cols-[20px_70px_1fr_100px_60px_60px] gap-1 flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       <span></span>
-                      <span>WBS</span>
-                      <span>작업명</span>
-                      <span className="text-center">기간</span>
-                      <span className="text-right">진척률</span>
-                      <span className="text-right">투입률</span>
+                      <span
+                        className="cursor-pointer hover:text-foreground flex items-center gap-0.5 select-none"
+                        onClick={() => { if (sortBy === 'wbs') setSortAsc(!sortAsc); else { setSortBy('wbs'); setSortAsc(true) } }}
+                      >
+                        WBS {sortBy === 'wbs' && <ArrowUpDown className="h-2.5 w-2.5" />}
+                      </span>
+                      <span
+                        className="cursor-pointer hover:text-foreground flex items-center gap-0.5 select-none"
+                        onClick={() => { if (sortBy === 'name') setSortAsc(!sortAsc); else { setSortBy('name'); setSortAsc(true) } }}
+                      >
+                        작업명 {sortBy === 'name' && <ArrowUpDown className="h-2.5 w-2.5" />}
+                      </span>
+                      <span
+                        className="text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-0.5 select-none"
+                        onClick={() => { if (sortBy === 'date') setSortAsc(!sortAsc); else { setSortBy('date'); setSortAsc(true) } }}
+                      >
+                        기간 {sortBy === 'date' && <ArrowUpDown className="h-2.5 w-2.5" />}
+                      </span>
+                      <span
+                        className="text-right cursor-pointer hover:text-foreground flex items-center justify-end gap-0.5 select-none"
+                        onClick={() => { if (sortBy === 'progress') setSortAsc(!sortAsc); else { setSortBy('progress'); setSortAsc(false) } }}
+                      >
+                        진척률 {sortBy === 'progress' && <ArrowUpDown className="h-2.5 w-2.5" />}
+                      </span>
+                      <span
+                        className="text-right cursor-pointer hover:text-foreground flex items-center justify-end gap-0.5 select-none"
+                        onClick={() => { if (sortBy === 'allocation') setSortAsc(!sortAsc); else { setSortBy('allocation'); setSortAsc(false) } }}
+                      >
+                        투입률 {sortBy === 'allocation' && <ArrowUpDown className="h-2.5 w-2.5" />}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                       <button
@@ -408,7 +517,7 @@ export function MemberTasksView() {
                   </div>
 
                   {/* Task rows */}
-                  {selectedMemberTasks.map(({ task, assignment, details }) => {
+                  {filteredMemberTasks.map(({ task, assignment, details }) => {
                     const startStr = task.planned_start ? format(new Date(task.planned_start), 'MM/dd') : '-'
                     const endStr = task.planned_end ? format(new Date(task.planned_end), 'MM/dd') : '-'
                     const progressPct = Math.round((task.actual_progress || 0) * 100)
