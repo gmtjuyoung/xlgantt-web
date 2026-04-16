@@ -181,7 +181,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
       )
     }
 
-    // 진척률 (actual_progress) - 모던 바 + 100% 완료 배지
+    // 진척률 (actual_progress) - 모던 바 표시
     if (col.id === 'actual_progress') {
       const pct = Math.round(task.actual_progress * 100)
       return (
@@ -191,7 +191,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
           className="flex items-center justify-center px-2 border-r gap-1.5"
         >
           {task.actual_progress_override != null && (
-            <span className="text-[11px] text-amber-600 leading-none" title="수동 진척률">🔒</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="수동 진척률" />
           )}
           <div className="flex items-center gap-1.5 w-full">
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -211,7 +211,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
       )
     }
 
-    // 계획진척률 (planned_progress) - 모던 바 + 100% 완료 배지
+    // 계획진척률 (planned_progress) - 모던 바 표시
     if (col.id === 'planned_progress') {
       const pct = Math.round(task.planned_progress * 100)
       return (
@@ -221,7 +221,7 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
           className="flex items-center justify-center px-2 border-r gap-1.5"
         >
           {task.planned_progress_override != null && (
-            <span className="text-[11px] text-violet-600 leading-none" title="수동 계획진척률">🔒</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="수동 계획진척률" />
           )}
           <div className="flex items-center gap-1.5 w-full">
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
