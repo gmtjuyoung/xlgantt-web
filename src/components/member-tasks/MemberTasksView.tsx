@@ -465,7 +465,7 @@ export function MemberTasksView() {
                 <div>
                   {/* Table header with sort */}
                   <div className="flex items-center px-5 py-2 bg-muted/20 border-b border-border/30 sticky top-0 z-10">
-                    <div className="grid grid-cols-[20px_70px_1fr_100px_60px_60px] gap-1 flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       <span></span>
                       <span
                         className="cursor-pointer hover:text-foreground flex items-center gap-0.5 select-none"
@@ -480,7 +480,7 @@ export function MemberTasksView() {
                         작업명 {sortBy === 'name' && <ArrowUpDown className="h-2.5 w-2.5" />}
                       </span>
                       <span
-                        className="text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-0.5 select-none"
+                        className="text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-0.5 select-none whitespace-nowrap"
                         onClick={() => { if (sortBy === 'date') setSortAsc(!sortAsc); else { setSortBy('date'); setSortAsc(true) } }}
                       >
                         기간 {sortBy === 'date' && <ArrowUpDown className="h-2.5 w-2.5" />}
@@ -535,15 +535,20 @@ export function MemberTasksView() {
                       <div key={`${task.id}_${assignment.id}`}>
                         {/* Task row */}
                         <div
-                          className="grid grid-cols-[20px_70px_1fr_100px_60px_60px] gap-1 px-5 py-2 hover:bg-accent/30 cursor-pointer items-center group border-b border-border/20 transition-colors"
+                          className="grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 px-5 py-2 hover:bg-accent/30 cursor-pointer items-center group border-b border-border/20 transition-colors"
                           onClick={() => handleOpenTask(task.id)}
                           title={`${task.task_name} (클릭하여 상세 편집)`}
                         >
                           {/* 접기 토글 */}
-                          <span className="flex-shrink-0">
+                          <span className="flex-shrink-0 flex items-center">
                             {details.length > 0 && (
-                              <button onClick={toggleCollapse} className="p-0.5 hover:bg-accent rounded">
-                                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                              <button
+                                onClick={toggleCollapse}
+                                className="h-6 px-1.5 rounded border border-border/60 bg-background/80 hover:bg-accent/40 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground"
+                                title={isCollapsed ? '세부항목 펼치기' : '세부항목 접기'}
+                              >
+                                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                <span>{details.length}</span>
                               </button>
                             )}
                           </span>
@@ -555,7 +560,7 @@ export function MemberTasksView() {
                             {details.length > 0 && <span className="text-[10px] text-muted-foreground/50">({details.filter(d => d.status === 'done').length}/{details.length})</span>}
                             <ExternalLink className="h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
                           </span>
-                          <span className="text-center text-[11px] text-muted-foreground font-mono">
+                          <span className="text-center text-[11px] text-muted-foreground font-mono whitespace-nowrap">
                             {startStr} ~ {endStr}
                           </span>
                           <span className="text-right text-xs font-mono">
