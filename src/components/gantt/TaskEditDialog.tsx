@@ -173,9 +173,12 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
       calendar_type: calendarType as 'STD' | 'UD1' | 'UD2',
       is_milestone: isMilestone,
     }
-    // 세부항목이 있으면 진척률/작업량은 자동 계산이므로 저장에서 제외
+    // 세부항목이 있으면 작업량은 자동 계산 유지
     if (!hasDetails) {
       changes.total_workload = totalWorkload ? parseFloat(totalWorkload) : undefined
+    }
+    // 실적 진척률은 수동 입력 시 override로 저장됨 (task-store에서 처리)
+    if (!isGroup) {
       changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
     }
     updateTask(taskId, changes)
@@ -278,9 +281,9 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                       <Input type="number" step="0.1" value={hasDetails ? currentDetails.length : totalWorkload} onChange={(e) => setTotalWorkload(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
                       {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
                     </Field>
-                    <Field label={hasDetails ? '진척률 (자동)' : '진척률 (%)'}>
-                      <Input type="number" min="0" max="100" value={hasDetails ? (detailProgress ?? 0) : actualProgress} onChange={(e) => setActualProgress(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
-                      {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
+                    <Field label={hasDetails ? '진척률 (%) 자동+수동' : '진척률 (%)'}>
+                      <Input type="number" min="0" max="100" value={hasDetails ? (actualProgress || String(detailProgress ?? 0)) : actualProgress} onChange={(e) => setActualProgress(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/20")} disabled={isGroup} />
+                      {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 자동값을 PM이 수동으로 덮어쓸 수 있습니다.</span>}
                     </Field>
                     <Field label="비고">
                       <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="h-7 text-xs" placeholder="메모" />

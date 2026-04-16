@@ -15,6 +15,7 @@ export function GanttView() {
   useKeyboard()
   const tasks = useTaskStore((s) => s.tasks)
   const dependencies = useTaskStore((s) => s.dependencies)
+  const setTasks = useTaskStore((s) => s.setTasks)
   const project = useProjectStore((s) => s.currentProject)
   const theme = useProjectStore((s) => s.theme)
   const { zoomLevel, tableWidth, setTableWidth, tableCollapsed, setTableCollapsed, searchQuery, filterStatus, showArchived, customDateRange } = useUIStore()
@@ -140,6 +141,14 @@ export function GanttView() {
       chartScrollRef.current.scrollLeft = Math.max(0, startX - 50)
     }
   }, [scale, project])
+
+  // 기준일(status_date) 변경 시 계획 진척률 재계산
+  useEffect(() => {
+    const current = useTaskStore.getState().tasks
+    if (current.length > 0) {
+      setTasks([...current])
+    }
+  }, [project?.status_date, setTasks])
 
   // Sync vertical scroll between table and chart
   const handleTableScroll = useCallback(() => {

@@ -188,8 +188,11 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
         <div
           key={col.id}
           style={{ width: col.width, minWidth: col.width }}
-          className="flex items-center justify-center px-2 border-r"
+          className="flex items-center justify-center px-2 border-r gap-1"
         >
+          {task.actual_progress_override != null && (
+            <span className="text-[10px] text-amber-600 font-medium whitespace-nowrap">🔒 수동</span>
+          )}
           {task.actual_progress >= 1 ? (
             <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
               <CheckCircle2 className="h-3 w-3" />
@@ -224,8 +227,11 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
         <div
           key={col.id}
           style={{ width: col.width, minWidth: col.width }}
-          className="flex items-center justify-center px-2 border-r"
+          className="flex items-center justify-center px-2 border-r gap-1"
         >
+          {task.planned_progress_override != null && (
+            <span className="text-[10px] text-violet-600 font-medium whitespace-nowrap">🔒 수동</span>
+          )}
           {task.planned_progress >= 1 ? (
             <span className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full border border-violet-200">
               <CheckCircle2 className="h-3 w-3" />
