@@ -3,8 +3,6 @@ import { useParams } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { GanttView } from '@/components/gantt/GanttView'
 import { ProgressDashboard } from '@/components/progress/ProgressDashboard'
-import { AnalysisReport } from '@/components/analysis/AnalysisReport'
-import { WorkloadView } from '@/components/workload/WorkloadView'
 import { CalendarManager } from '@/components/calendar/CalendarManager'
 import { ProjectSettings } from '@/components/settings/ProjectSettings'
 import { ResourceManager } from '@/components/settings/ResourceManager'
@@ -32,9 +30,9 @@ function MainContent() {
     case 'progress':
       return <ProgressDashboard />
     case 'analysis':
-      return <AnalysisReport />
+      return <ProgressDashboard />
     case 'workload':
-      return <WorkloadView />
+      return <ProgressDashboard />
     case 'calendar':
       return <CalendarManager />
     case 'resources':

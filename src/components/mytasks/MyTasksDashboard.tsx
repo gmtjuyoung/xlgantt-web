@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   CheckSquare,
   Square,
@@ -120,6 +120,7 @@ const CUSTOM_COLOR_MAP: Record<string, {
 }
 
 const AVAILABLE_COLORS = ['purple', 'pink', 'orange', 'red', 'teal', 'indigo', 'cyan']
+const MYTASKS_VIEW_MODE_KEY = 'xlgantt:mytasks:viewMode'
 
 function getStatusColors(status: string, customStatuses: CustomStatus[]) {
   if (DEFAULT_STATUS_COLORS[status]) return DEFAULT_STATUS_COLORS[status]
@@ -146,7 +147,11 @@ export function MyTasksDashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'kanban'
+    const saved = window.localStorage.getItem(MYTASKS_VIEW_MODE_KEY)
+    return saved === 'list' || saved === 'kanban' ? saved : 'kanban'
+  })
   const [sortBy, setSortBy] = useState<'wbs' | 'name' | 'type' | 'status' | 'due' | 'progress'>('wbs')
   const [sortAsc, setSortAsc] = useState(true)
 
@@ -158,6 +163,11 @@ export function MyTasksDashboard() {
   const [showAddStatus, setShowAddStatus] = useState(false)
   const [newStatusLabel, setNewStatusLabel] = useState('')
   const [newStatusColor, setNewStatusColor] = useState('purple')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(MYTASKS_VIEW_MODE_KEY, viewMode)
+  }, [viewMode])
 
   // 현재 프로젝트의 커스텀 상태
   const projectCustomStatuses = useMemo(() => {

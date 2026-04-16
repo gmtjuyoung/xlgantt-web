@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Search, Users, ClipboardList, ExternalLink, UserCheck, List, LayoutGrid, ChevronDown, ChevronRight, Clock, ArrowUpDown } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { useResourceStore } from '@/stores/resource-store'
@@ -21,6 +21,8 @@ interface MemberTaskInfo {
   assignment: TaskAssignment
   details: TaskDetail[]
 }
+
+const MEMBER_TASKS_VIEW_MODE_KEY = 'xlgantt:memberTasks:detailViewMode'
 
 // ============================================================
 // Status badge component
@@ -77,12 +79,21 @@ export function MemberTasksView() {
   const [editTaskId, setEditTaskId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [hideDone, setHideDone] = useState(false)
-  const [detailViewMode, setDetailViewMode] = useState<'list' | 'card'>('list')
+  const [detailViewMode, setDetailViewMode] = useState<'list' | 'card'>(() => {
+    if (typeof window === 'undefined') return 'list'
+    const saved = window.localStorage.getItem(MEMBER_TASKS_VIEW_MODE_KEY)
+    return saved === 'card' || saved === 'list' ? saved : 'list'
+  })
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
   const [cardDetailId, setCardDetailId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<'wbs' | 'name' | 'allocation' | 'date' | 'progress'>('wbs')
   const [sortAsc, setSortAsc] = useState(true)
   const [taskSearchQuery, setTaskSearchQuery] = useState('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(MEMBER_TASKS_VIEW_MODE_KEY, detailViewMode)
+  }, [detailViewMode])
 
   const handleOpenTask = useCallback((taskId: string) => {
     setEditTaskId(taskId)

@@ -13,10 +13,8 @@ import {
   Settings,
   Users,
   UserCheck,
-  TrendingUp,
   ClipboardList,
   PieChart,
-  Activity,
   Clock,
   AlertTriangle,
   X,
@@ -57,8 +55,6 @@ const TAB_GROUPS: TabGroup[] = [
   ]},
   { tabs: [
     { key: 'progress', label: '진척현황', icon: <PieChart className="h-3.5 w-3.5" /> },
-    { key: 'analysis', label: '분석', icon: <Activity className="h-3.5 w-3.5" /> },
-    { key: 'workload', label: '작업량', icon: <TrendingUp className="h-3.5 w-3.5" />, pmOrAdmin: true },
   ]},
   { tabs: [
     { key: 'calendar', label: '달력', icon: <Calendar className="h-3.5 w-3.5" />, pmOrAdmin: true },
@@ -106,6 +102,13 @@ export function Header() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [bellOpen])
+
+  // 기존 저장값 호환: 통합된 화면에서는 analysis/workload를 progress로 통일
+  useEffect(() => {
+    if (activeView === 'analysis' || activeView === 'workload') {
+      setActiveView('progress')
+    }
+  }, [activeView, setActiveView])
 
   // 현재 사용자 매칭 멤버
   const myMember = useMemo(() => {

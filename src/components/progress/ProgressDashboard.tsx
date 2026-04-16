@@ -7,27 +7,35 @@ import { useTaskStore } from '@/stores/task-store'
 import { useProjectStore } from '@/stores/project-store'
 import { useResourceStore } from '@/stores/resource-store'
 import { useAuthStore } from '@/stores/auth-store'
+import { AnalysisReport } from '@/components/analysis/AnalysisReport'
+import { WorkloadView } from '@/components/workload/WorkloadView'
 import {
   calculateProjectMetrics,
   generateMonthlyProgress,
   generateWeeklyProgress,
+  generateDailyProgress,
   calcProgressByResource,
   calcProgressByCompany,
   calcProgressByWBSGroup,
+  calcProgressByTask,
 } from '@/lib/progress-calc'
 import type { ProjectMetrics } from '@/lib/progress-calc'
 import { cn } from '@/lib/utils'
-import { CalendarClock, TrendingUp, Users, Building2, FolderTree, BarChart3 } from 'lucide-react'
+import { CalendarClock, TrendingUp, Users, Building2, FolderTree, BarChart3, ListChecks, CalendarDays } from 'lucide-react'
 
-type ProgressTab = 'overview' | 'monthly' | 'weekly' | 'resource' | 'company' | 'wbs'
+type ProgressTab = 'overview' | 'monthly' | 'weekly' | 'resource' | 'task' | 'daily' | 'company' | 'wbs' | 'analysis' | 'workload'
 
 const TABS: { key: ProgressTab; label: string; icon: React.ReactNode }[] = [
   { key: 'overview', label: '전체', icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { key: 'monthly', label: '월별', icon: <CalendarClock className="h-3.5 w-3.5" /> },
   { key: 'weekly', label: '주별', icon: <TrendingUp className="h-3.5 w-3.5" /> },
-  { key: 'resource', label: '담당자별', icon: <Users className="h-3.5 w-3.5" /> },
+  { key: 'resource', label: '개인별', icon: <Users className="h-3.5 w-3.5" /> },
+  { key: 'task', label: '업무별', icon: <ListChecks className="h-3.5 w-3.5" /> },
+  { key: 'daily', label: '일자별', icon: <CalendarDays className="h-3.5 w-3.5" /> },
   { key: 'company', label: '회사별', icon: <Building2 className="h-3.5 w-3.5" /> },
   { key: 'wbs', label: 'WBS그룹별', icon: <FolderTree className="h-3.5 w-3.5" /> },
+  { key: 'analysis', label: '분석', icon: <BarChart3 className="h-3.5 w-3.5" /> },
+  { key: 'workload', label: '작업량', icon: <TrendingUp className="h-3.5 w-3.5" /> },
 ]
 
 export function ProgressDashboard() {
@@ -55,7 +63,7 @@ export function ProgressDashboard() {
   }, [allTasks, onlyMine, myMember, myTaskIds])
 
   const statusDate = project?.status_date
-  const metrics = useMemo(() => calculateProjectMetrics(tasks, statusDate), [tasks, statusDate])
+  const metrics = useMemo(() => calculateProjectMetrics(tasks, statusDate, assignments), [tasks, statusDate, assignments])
 
   if (!project) return null
 
@@ -114,12 +122,29 @@ export function ProgressDashboard() {
             companies={companies} statusDate={statusDate}
           />
         )}
-        {activeTab === 'company' && (
-          <CompanyTab
-            tasks={tasks} assignments={assignments} members={members} companies={companies}
+        {activeTab === 'task' && (
+          <TaskTab
+            tasks={tasks}
+            assignments={assignments}
+            statusDate={statusDate}
           />
         )}
-        {activeTab === 'wbs' && <WBSGroupTab tasks={tasks} />}
+        {activeTab === 'daily' && (
+          <DailyTab
+            tasks={tasks}
+            assignments={assignments}
+            projectStart={project.start_date}
+            projectEnd={project.end_date}
+          />
+        )}
+        {activeTab === 'company' && (
+          <CompanyTab
+            tasks={tasks} assignments={assignments} members={members} companies={companies} statusDate={statusDate}
+          />
+        )}
+        {activeTab === 'wbs' && <WBSGroupTab tasks={tasks} statusDate={statusDate} />}
+        {activeTab === 'analysis' && <AnalysisReport />}
+        {activeTab === 'workload' && <WorkloadView />}
       </div>
     </div>
   )
@@ -278,10 +303,10 @@ function MonthlyTab({
     () => monthlyData.map((m) => ({
       name: m.monthLabel,
       '계획률': +(m.plannedRate * 100).toFixed(1),
-      '실적률': +(m.evRate * 100).toFixed(1),
+      'EV률': +(m.evRate * 100).toFixed(1),
       '실투입': +(m.actualRate * 100).toFixed(1),
       '월 계획': +m.plannedWorkload.toFixed(1),
-      '월 실적': +m.earnedValue.toFixed(1),
+      '월 EV': +m.earnedValue.toFixed(1),
     })),
     [monthlyData]
   )
@@ -389,9 +414,9 @@ function WeeklyTab({
     () => weeklyData.map((w) => ({
       name: w.weekLabel,
       '계획률': +(w.plannedRate * 100).toFixed(1),
-      '실적률': +(w.evRate * 100).toFixed(1),
+      'EV률': +(w.evRate * 100).toFixed(1),
       '주간 계획': +w.plannedWorkload.toFixed(1),
-      '주간 실적': +w.earnedValue.toFixed(1),
+      '주간 EV': +w.earnedValue.toFixed(1),
     })),
     [weeklyData]
   )
@@ -569,19 +594,158 @@ function ResourceTab({
 }
 
 // ============================================================
+// 업무별 (Task)
+// ============================================================
+function TaskTab({
+  tasks, assignments, statusDate,
+}: {
+  tasks: Parameters<typeof calcProgressByTask>[0]
+  assignments: Parameters<typeof calcProgressByTask>[2]
+  statusDate?: string
+}) {
+  const taskData = useMemo(
+    () => calcProgressByTask(tasks, statusDate, assignments),
+    [tasks, statusDate, assignments]
+  )
+
+  if (taskData.length === 0) {
+    return <EmptyState message="업무별 데이터가 없습니다." />
+  }
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <Card title="업무별 계획 vs 실적">
+        <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <th className="px-3 py-2 text-left font-semibold">WBS</th>
+                <th className="px-3 py-2 text-left font-semibold">업무명</th>
+                <th className="px-3 py-2 text-right font-semibold">작업량</th>
+                <th className="px-3 py-2 text-right font-semibold">계획률</th>
+                <th className="px-3 py-2 text-right font-semibold">실적률</th>
+                <th className="px-3 py-2 text-right font-semibold">차이</th>
+                <th className="px-3 py-2 text-right font-semibold">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {taskData.map((t, i) => (
+                <tr key={t.taskId} className={cn("border-b border-border/20 hover:bg-accent/30 transition-colors", i % 2 === 1 && "bg-muted/10")}>
+                  <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{t.wbsCode}</td>
+                  <td className="px-3 py-2 font-medium">{t.taskName}</td>
+                  <td className="px-3 py-2 text-right font-mono">{t.totalWorkload.toFixed(1)}</td>
+                  <td className="px-3 py-2 text-right"><Badge color="blue">{(t.plannedRate * 100).toFixed(1)}%</Badge></td>
+                  <td className="px-3 py-2 text-right"><Badge color="green">{(t.progressRate * 100).toFixed(1)}%</Badge></td>
+                  <td className="px-3 py-2 text-right">
+                    <span className={cn("text-xs font-medium", t.gap >= 0 ? 'text-blue-600' : 'text-red-500')}>
+                      {t.gap >= 0 ? '+' : ''}{(t.gap * 100).toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {t.isDelayed ? (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-xs font-medium">지연</span>
+                    ) : (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 text-xs font-medium">정상</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// ============================================================
+// 일자별 (Daily)
+// ============================================================
+function DailyTab({
+  tasks, assignments, projectStart, projectEnd,
+}: {
+  tasks: Parameters<typeof generateDailyProgress>[0]
+  assignments: Parameters<typeof generateDailyProgress>[3]
+  projectStart: string
+  projectEnd: string
+}) {
+  const dailyData = useMemo(
+    () => generateDailyProgress(tasks, projectStart, projectEnd, assignments),
+    [tasks, projectStart, projectEnd, assignments]
+  )
+
+  const chartData = useMemo(
+    () => dailyData.map((d) => ({
+      name: d.dateLabel,
+      '계획률': +(d.plannedRate * 100).toFixed(1),
+      '실적률': +(d.evRate * 100).toFixed(1),
+    })),
+    [dailyData]
+  )
+
+  const displayChart = chartData.length > 40 ? chartData.slice(-40) : chartData
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <Card title="일자별 누적 진척률">
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart data={displayChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
+            <XAxis dataKey="name" fontSize={10} tick={{ fill: 'oklch(0.5 0.02 250)' }} interval={Math.max(0, Math.floor(displayChart.length / 10) - 1)} />
+            <YAxis fontSize={11} tickFormatter={(v: number) => `${v}%`} tick={{ fill: 'oklch(0.5 0.02 250)' }} />
+            <Tooltip formatter={(value) => `${value}%`} contentStyle={tooltipStyle} />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            <Line type="monotone" dataKey="계획률" stroke="#3b82f6" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="실적률" stroke="#22c55e" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Card title={`일자별 상세 (${dailyData.length}일)`}>
+        <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <th className="px-3 py-2 text-left font-semibold">일자</th>
+                <th className="px-3 py-2 text-right font-semibold">일 계획량</th>
+                <th className="px-3 py-2 text-right font-semibold">누적 계획률</th>
+                <th className="px-3 py-2 text-right font-semibold">일 실적량</th>
+                <th className="px-3 py-2 text-right font-semibold">누적 실적률</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyData.map((d, i) => (
+                <tr key={d.date} className={cn("border-b border-border/20 hover:bg-accent/30 transition-colors", i % 2 === 1 && "bg-muted/10")}>
+                  <td className="px-3 py-2 font-mono text-xs">{d.date}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{d.plannedWorkload.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right"><Badge color="blue">{(d.plannedRate * 100).toFixed(1)}%</Badge></td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{d.earnedValue.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right"><Badge color="green">{(d.evRate * 100).toFixed(1)}%</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// ============================================================
 // 회사별 (Company)
 // ============================================================
 function CompanyTab({
-  tasks, assignments, members, companies,
+  tasks, assignments, members, companies, statusDate,
 }: {
   tasks: Parameters<typeof calcProgressByCompany>[0]
   assignments: Parameters<typeof calcProgressByCompany>[1]
   members: Parameters<typeof calcProgressByCompany>[2]
   companies: Parameters<typeof calcProgressByCompany>[3]
+  statusDate?: string
 }) {
   const companyData = useMemo(
-    () => calcProgressByCompany(tasks, assignments, members, companies),
-    [tasks, assignments, members, companies]
+    () => calcProgressByCompany(tasks, assignments, members, companies, statusDate),
+    [tasks, assignments, members, companies, statusDate]
   )
 
   const chartData = useMemo(
@@ -665,8 +829,8 @@ function CompanyTab({
 // ============================================================
 // WBS 그룹별
 // ============================================================
-function WBSGroupTab({ tasks }: { tasks: Parameters<typeof calcProgressByWBSGroup>[0] }) {
-  const wbsData = useMemo(() => calcProgressByWBSGroup(tasks), [tasks])
+function WBSGroupTab({ tasks, statusDate }: { tasks: Parameters<typeof calcProgressByWBSGroup>[0]; statusDate?: string }) {
+  const wbsData = useMemo(() => calcProgressByWBSGroup(tasks, statusDate), [tasks, statusDate])
 
   const chartData = useMemo(
     () => wbsData.map((g) => ({

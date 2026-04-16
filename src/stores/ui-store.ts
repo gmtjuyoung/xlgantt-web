@@ -170,6 +170,7 @@ export const useUIStore = create<UIState>()(
       },
       // 런타임 상태는 저장하지 않음 (검색어, 링크모드 등)
       partialize: (state) => ({
+        activeView: state.activeView,
         zoomLevel: state.zoomLevel,
         tableWidth: state.tableWidth,
         tableCollapsed: state.tableCollapsed,
