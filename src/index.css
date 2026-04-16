@@ -231,3 +231,61 @@
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .safe-top { padding-top: env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+@layer components {
+  .mtv-table-header {
+    @apply flex items-center px-5 py-2 bg-slate-100/90 border-b border-slate-300 sticky top-0 z-10;
+  }
+
+  .mtv-task-block {
+    @apply border-b-2 border-slate-300;
+  }
+
+  .mtv-task-row {
+    @apply grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 px-5 py-3 cursor-pointer items-center border-y border-slate-300 transition-colors;
+  }
+
+  .mtv-task-row--done {
+    @apply border-l-4 border-l-emerald-700 bg-emerald-200 hover:bg-emerald-300;
+  }
+
+  .mtv-task-row--progress {
+    @apply border-l-4 border-l-sky-700 bg-sky-200 hover:bg-sky-300;
+  }
+
+  .mtv-task-row--todo {
+    @apply border-l-4 border-l-amber-700 bg-amber-200 hover:bg-amber-300;
+  }
+
+  .mtv-row-wbs {
+    @apply text-[10px] text-slate-700 font-mono font-semibold;
+  }
+
+  .mtv-row-period {
+    @apply text-center text-[11px] text-slate-700 font-mono font-semibold whitespace-nowrap;
+  }
+
+  .mtv-detail-list {
+    @apply bg-slate-100/85 border-t border-slate-300;
+  }
+
+  .mtv-detail-row {
+    @apply flex items-center gap-2 pl-12 pr-5 py-2.5 text-[11px] hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-300;
+  }
+
+  .mtv-status-badge {
+    @apply px-1.5 py-0.5 rounded text-[10px] font-semibold;
+  }
+
+  .mtv-status-badge--todo {
+    @apply bg-amber-100 text-amber-700;
+  }
+
+  .mtv-status-badge--progress {
+    @apply bg-sky-100 text-sky-700;
+  }
+
+  .mtv-status-badge--done {
+    @apply bg-emerald-100 text-emerald-700;
+  }
+}

@@ -26,16 +26,16 @@ interface MemberTaskInfo {
 // Status badge component
 // ============================================================
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  todo: { label: '대기', bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400' },
-  in_progress: { label: '진행', bg: 'bg-blue-50 dark:bg-blue-950', text: 'text-blue-600 dark:text-blue-400' },
-  done: { label: '완료', bg: 'bg-green-50 dark:bg-green-950', text: 'text-green-600 dark:text-green-400' },
+const STATUS_CONFIG: Record<string, { label: string; tone: string }> = {
+  todo: { label: '대기', tone: 'mtv-status-badge--todo' },
+  in_progress: { label: '진행', tone: 'mtv-status-badge--progress' },
+  done: { label: '완료', tone: 'mtv-status-badge--done' },
 }
 
 function StatusBadge({ status }: { status: string }) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.todo
   return (
-    <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium', config.bg, config.text)}>
+    <span className={cn('mtv-status-badge', config.tone)}>
       {config.label}
     </span>
   )
@@ -462,9 +462,9 @@ export function MemberTasksView() {
                   {taskSearchQuery ? '검색 결과가 없습니다' : '배정된 작업이 없습니다'}
                 </div>
               ) : (
-                <div>
+                <div className="border-t border-border/50">
                   {/* Table header with sort */}
-                  <div className="flex items-center px-5 py-2 bg-muted/20 border-b border-border/30 sticky top-0 z-10">
+                  <div className="mtv-table-header">
                     <div className="grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       <span></span>
                       <span
@@ -524,10 +524,10 @@ export function MemberTasksView() {
                     const isCollapsed = collapsedTasks.has(task.id)
                     const rowTone =
                       progressPct >= 100
-                        ? 'border-l-2 border-l-emerald-500 bg-emerald-50/50 hover:bg-emerald-100/50'
+                        ? 'mtv-task-row--done'
                         : progressPct > 0
-                          ? 'border-l-2 border-l-blue-500 bg-blue-50/45 hover:bg-blue-100/50'
-                          : 'border-l-2 border-l-amber-500 bg-amber-50/45 hover:bg-amber-100/50'
+                          ? 'mtv-task-row--progress'
+                          : 'mtv-task-row--todo'
                     const toggleCollapse = (e: React.MouseEvent) => {
                       e.stopPropagation()
                       setCollapsedTasks((prev) => {
@@ -538,11 +538,11 @@ export function MemberTasksView() {
                     }
 
                     return (
-                      <div key={`${task.id}_${assignment.id}`}>
+                      <div key={`${task.id}_${assignment.id}`} className="mtv-task-block">
                         {/* Task row */}
                         <div
                           className={cn(
-                            'grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 px-5 py-2 cursor-pointer items-center group border-b border-border/20 transition-colors',
+                            'mtv-task-row group',
                             rowTone
                           )}
                           onClick={() => handleOpenTask(task.id)}
@@ -563,15 +563,15 @@ export function MemberTasksView() {
                               </button>
                             )}
                           </span>
-                          <span className="text-[10px] text-muted-foreground font-mono">
+                          <span className="mtv-row-wbs">
                             {task.wbs_code}
                           </span>
-                          <span className="text-xs truncate flex items-center gap-1">
+                          <span className="text-xs truncate flex items-center gap-1.5">
                             <span className="truncate">{task.task_name}</span>
-                            {details.length > 0 && <span className="text-[10px] text-muted-foreground/50">({details.filter(d => d.status === 'done').length}/{details.length})</span>}
+                            {details.length > 0 && <span className="text-[10px] text-slate-600/80 font-semibold">({details.filter(d => d.status === 'done').length}/{details.length})</span>}
                             <ExternalLink className="h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
                           </span>
-                          <span className="text-center text-[11px] text-muted-foreground font-mono whitespace-nowrap">
+                          <span className="mtv-row-period">
                             {startStr} ~ {endStr}
                           </span>
                           <span className="text-right text-xs font-mono">
@@ -588,11 +588,11 @@ export function MemberTasksView() {
 
                         {/* Task details - 리스트 모드 */}
                         {details.length > 0 && !isCollapsed && detailViewMode === 'list' && (
-                          <div className="bg-muted/10 border-b border-border/20">
+                          <div className="mtv-detail-list">
                             {details.map((detail) => (
                               <div
                                 key={detail.id}
-                                className="flex items-center gap-2 pl-12 pr-5 py-1.5 text-[11px] hover:bg-accent/20 transition-colors cursor-pointer"
+                                className="mtv-detail-row"
                                 onClick={() => setCardDetailId(detail.id)}
                               >
                                 <StatusBadge status={detail.status} />
