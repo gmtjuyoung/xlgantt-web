@@ -40,6 +40,11 @@ function calcDuration(start?: string, end?: string, calType: CalendarType = 'STD
   return countWorkingDays(parseISO(start), parseISO(end), workDays, holidaySet)
 }
 
+function getProgressWeight(task: Task): number {
+  const w = task.total_workload
+  return typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : 1
+}
+
 /** 그룹 작업의 날짜/기간/작업량을 자식 기준으로 갱신 */
 function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
   const changedTask = tasks.find((t) => t.id === changedTaskId)
@@ -77,17 +82,14 @@ function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
   const totalWorkload = leafChildren.reduce((sum, t) => sum + (t.total_workload || 0), 0)
 
   // 진척률: 작업량 가중 평균
-  const weightedActualProgress = totalWorkload > 0
-    ? leafChildren.reduce((sum, t) => sum + (getEffectiveActualProgress(t) * (t.total_workload || 0)), 0) / totalWorkload
-    : leafChildren.length > 0
-      ? leafChildren.reduce((sum, t) => sum + getEffectiveActualProgress(t), 0) / leafChildren.length
-      : 0
+  const totalWeight = leafChildren.reduce((sum, t) => sum + getProgressWeight(t), 0)
+  const weightedActualProgress = totalWeight > 0
+    ? leafChildren.reduce((sum, t) => sum + (getEffectiveActualProgress(t) * getProgressWeight(t)), 0) / totalWeight
+    : 0
 
-  const weightedPlannedProgress = totalWorkload > 0
-    ? leafChildren.reduce((sum, t) => sum + (getEffectivePlannedProgress(t, statusDate) * (t.total_workload || 0)), 0) / totalWorkload
-    : leafChildren.length > 0
-      ? leafChildren.reduce((sum, t) => sum + getEffectivePlannedProgress(t, statusDate), 0) / leafChildren.length
-      : 0
+  const weightedPlannedProgress = totalWeight > 0
+    ? leafChildren.reduce((sum, t) => sum + (getEffectivePlannedProgress(t, statusDate) * getProgressWeight(t)), 0) / totalWeight
+    : 0
 
   const updated = tasks.map((t) =>
     t.id === parentTask.id
@@ -364,17 +366,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const totalWorkload = leafChildren.reduce((sum, t) => sum + (t.total_workload || 0), 0)
 
       // 진척률: 작업량 가중 평균
-      const weightedActualProgress = totalWorkload > 0
-        ? leafChildren.reduce((sum, t) => sum + (t.actual_progress * (t.total_workload || 0)), 0) / totalWorkload
-        : leafChildren.length > 0
-          ? leafChildren.reduce((sum, t) => sum + t.actual_progress, 0) / leafChildren.length
-          : 0
+      const totalWeight = leafChildren.reduce((sum, t) => sum + getProgressWeight(t), 0)
+      const weightedActualProgress = totalWeight > 0
+        ? leafChildren.reduce((sum, t) => sum + (t.actual_progress * getProgressWeight(t)), 0) / totalWeight
+        : 0
 
-      const weightedPlannedProgress = totalWorkload > 0
-        ? leafChildren.reduce((sum, t) => sum + (t.planned_progress * (t.total_workload || 0)), 0) / totalWorkload
-        : leafChildren.length > 0
-          ? leafChildren.reduce((sum, t) => sum + t.planned_progress, 0) / leafChildren.length
-          : 0
+      const weightedPlannedProgress = totalWeight > 0
+        ? leafChildren.reduce((sum, t) => sum + (t.planned_progress * getProgressWeight(t)), 0) / totalWeight
+        : 0
 
       tasks = tasks.map((t) =>
         t.id === group.id
