@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Calendar, Trash2, FolderOpen, User, Shield, LogOut, ChevronDown, Diamond, CheckCircle2, Folder, ArrowDownUp, FolderPlus, Tag } from 'lucide-react'
+import { Plus, Calendar, Trash2, FolderOpen, User, Shield, LogOut, ChevronDown, Diamond, CheckCircle2, Folder, ArrowDownUp, FolderPlus, Tag, Gauge, FolderKanban, AlertTriangle, Timer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -250,6 +250,21 @@ export function ProjectDashboard() {
     return entries
   }, [sortedProjects, groupByCategory, masterCategories])
 
+  const dashboardSummary = useMemo(() => {
+    if (projects.length === 0) {
+      return { avgActual: 0, avgPlanned: 0, delayedCount: 0, totalMilestones: 0 }
+    }
+    const entries = projects.map((p) => statsMap[p.id]).filter(Boolean) as ProjectStats[]
+    if (entries.length === 0) {
+      return { avgActual: 0, avgPlanned: 0, delayedCount: 0, totalMilestones: 0 }
+    }
+    const avgActual = entries.reduce((sum, s) => sum + s.actualProgress, 0) / entries.length
+    const avgPlanned = entries.reduce((sum, s) => sum + s.plannedProgress, 0) / entries.length
+    const delayedCount = entries.filter((s) => computeStatus(s.plannedProgress, s.actualProgress) === 'red').length
+    const totalMilestones = entries.reduce((sum, s) => sum + s.milestoneCount, 0)
+    return { avgActual, avgPlanned, delayedCount, totalMilestones }
+  }, [projects, statsMap])
+
   const handleCreate = () => {
     if (!newName.trim()) return
     const id = crypto.randomUUID()
@@ -300,7 +315,6 @@ export function ProjectDashboard() {
     }[status]
     const remaining = daysBetween(p.end_date)
     const dLabel = remaining >= 0 ? `D-${remaining}` : `D+${-remaining} 초과`
-    const dClass = remaining < 0 ? 'text-rose-600' : remaining <= 7 ? 'text-amber-600' : 'text-muted-foreground/60'
 
     return (
       <div
@@ -308,11 +322,13 @@ export function ProjectDashboard() {
         className="project-card group"
         onClick={() => navigate(`/projects/${p.id}`)}
       >
+        <div className="h-1.5 -mx-4 -mt-4 mb-3 rounded-t-xl bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500" />
+
         {/* 헤더 */}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-semibold truncate flex-1">{p.name}</h3>
+        <div className="project-card-head">
+          <h3 className="text-base font-bold truncate flex-1 text-slate-800">{p.name}</h3>
           <div className="flex items-center gap-1 flex-shrink-0">
-            <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 border rounded-full', statusClasses)}>
+            <span className={cn('project-chip', statusClasses)}>
               <span className={cn('w-1.5 h-1.5 rounded-full', dotClass)} />
               {statusLabel}
             </span>
@@ -333,11 +349,11 @@ export function ProjectDashboard() {
         </div>
 
         {/* 카테고리 — admin만 편집 가능, 그 외엔 읽기 전용 chip */}
-        <div onClick={(e) => e.stopPropagation()} className="-mt-1">
+        <div onClick={(e) => e.stopPropagation()} className="project-card-meta">
           {isAdmin ? (
             <DropdownMenu>
               <DropdownMenuTrigger>
-                <button className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 hover:text-primary border border-dashed border-border/60 hover:border-primary/40 rounded-full px-2 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                <button className="project-chip text-slate-600 hover:text-primary border-dashed border-slate-300 hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
                   <Tag className="h-2.5 w-2.5" />
                   {p.category || '카테고리 없음'}
                   <ChevronDown className="h-2.5 w-2.5" />
@@ -370,39 +386,42 @@ export function ProjectDashboard() {
             </DropdownMenu>
           ) : (
             p.category ? (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 bg-muted/50 rounded-full px-2 py-0.5">
+              <span className="project-chip text-slate-600 bg-slate-100 border-slate-200">
                 <Tag className="h-2.5 w-2.5" />
                 {p.category}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/40 px-2 py-0.5">
+              <span className="project-chip text-slate-400 border-slate-200">
                 <Tag className="h-2.5 w-2.5" />
                 카테고리 없음
               </span>
             )
           )}
+          <span className={cn('project-chip', remaining < 0 ? 'text-rose-600 border-rose-200 bg-rose-50' : 'text-slate-600 border-slate-200 bg-slate-100')}>
+            <Timer className="h-3 w-3" />
+            {dLabel}
+          </span>
         </div>
 
         {/* 날짜 + 잔여일수 */}
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground/70 -mt-1">
+        <div className="flex items-center gap-3 text-[11px] text-slate-500">
           <span className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
             {p.start_date} ~ {p.end_date}
           </span>
-          <span className={cn('font-semibold tabular-nums', dClass)}>{dLabel}</span>
         </div>
 
         {/* 설명 */}
         {p.description && (
-          <p className="text-[11px] text-muted-foreground/70 line-clamp-2">{p.description}</p>
+          <p className="text-[11px] text-slate-500 line-clamp-2">{p.description}</p>
         )}
 
         {/* 진행률 비교 */}
-        <div className="space-y-1.5">
-          <div className="project-toolbar-actions">
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+          <div className="flex items-center gap-2">
             <span className="text-[10px] font-medium text-muted-foreground/70 w-7">계획</span>
             <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-400/70 rounded-full transition-all" style={{ width: `${Math.round(planned * 100)}%` }} />
+              <div className="h-full bg-sky-400 rounded-full transition-all" style={{ width: `${Math.round(planned * 100)}%` }} />
             </div>
             <span className="text-[10px] font-semibold tabular-nums w-8 text-right text-muted-foreground">{Math.round(planned * 100)}%</span>
           </div>
@@ -416,7 +435,7 @@ export function ProjectDashboard() {
         </div>
 
         {/* 작업 요약 */}
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground/70 pt-1 border-t border-border/40">
+        <div className="flex items-center gap-3 text-[10px] text-slate-600 pt-1 border-t border-slate-200">
           <span className="flex items-center gap-1">
             <CheckCircle2 className="h-3 w-3 text-emerald-500" />
             <span className="font-semibold text-foreground/80 tabular-nums">{stats?.doneCount ?? 0}</span>
@@ -481,12 +500,43 @@ export function ProjectDashboard() {
 
       {/* 본문 */}
       <main className="std-page-main">
+        <section className="project-hero">
+          <div className="project-hero-head">
+            <div>
+              <h1 className="project-hero-title">프로젝트 상황판</h1>
+              <p className="project-hero-sub">전체 프로젝트의 계획 대비 실적, 리스크, 일정 압박을 한 번에 확인합니다.</p>
+            </div>
+          </div>
+          <div className="project-hero-grid">
+            <div className="project-hero-item">
+              <FolderKanban className="h-3.5 w-3.5 text-blue-100 mb-1" />
+              <strong>{projects.length}</strong>
+              <span>전체 프로젝트</span>
+            </div>
+            <div className="project-hero-item">
+              <Gauge className="h-3.5 w-3.5 text-blue-100 mb-1" />
+              <strong>{Math.round(dashboardSummary.avgPlanned * 100)}%</strong>
+              <span>평균 계획 진척</span>
+            </div>
+            <div className="project-hero-item">
+              <CheckCircle2 className="h-3.5 w-3.5 text-blue-100 mb-1" />
+              <strong>{Math.round(dashboardSummary.avgActual * 100)}%</strong>
+              <span>평균 실제 진척</span>
+            </div>
+            <div className="project-hero-item">
+              <AlertTriangle className="h-3.5 w-3.5 text-blue-100 mb-1" />
+              <strong>{dashboardSummary.delayedCount}</strong>
+              <span>지연 프로젝트</span>
+            </div>
+          </div>
+        </section>
+
         <div className="project-toolbar">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">프로젝트</h1>
-            <p className="text-xs text-muted-foreground/60 mt-0.5">{projects.length}개</p>
+            <h2 className="text-lg font-bold tracking-tight text-slate-800">프로젝트 목록</h2>
+            <p className="text-xs text-slate-500 mt-0.5">마일스톤 총 {dashboardSummary.totalMilestones}개</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="project-toolbar-actions">
             {/* 정렬 */}
             <DropdownMenu>
               <DropdownMenuTrigger>

@@ -291,7 +291,7 @@
   }
 
   .auth-container {
-    @apply w-full max-w-sm;
+    @apply w-full max-w-5xl;
   }
 
   .auth-brand {
@@ -321,6 +321,94 @@
 
   .auth-hint {
     @apply text-[11px] text-slate-500 text-center mt-4 space-y-0.5 bg-white/70 border border-slate-200 rounded-lg px-3 py-2;
+  }
+
+  .auth-layout {
+    @apply grid lg:grid-cols-[1.1fr_0.9fr] gap-6 items-stretch;
+  }
+
+  .auth-showcase {
+    @apply hidden lg:flex flex-col justify-between rounded-3xl p-8 border border-blue-200/70 bg-gradient-to-br from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_24px_48px_rgba(30,64,175,0.28)];
+  }
+
+  .auth-showcase-kicker {
+    @apply text-[11px] uppercase tracking-[0.16em] text-blue-100/90 font-semibold;
+  }
+
+  .auth-showcase-title {
+    @apply text-[30px] font-bold leading-tight tracking-[-0.01em] mt-3;
+  }
+
+  .auth-showcase-copy {
+    @apply mt-3 text-blue-50/90 text-sm leading-relaxed;
+  }
+
+  .auth-showcase-metrics {
+    @apply grid grid-cols-2 gap-3 mt-8;
+  }
+
+  .auth-showcase-metric {
+    @apply rounded-xl bg-white/12 border border-white/25 px-3 py-2;
+  }
+
+  .auth-showcase-metric strong {
+    @apply block text-xl font-bold text-white;
+  }
+
+  .auth-showcase-metric span {
+    @apply text-[11px] text-blue-100/90;
+  }
+
+  .auth-form-wrap {
+    @apply flex flex-col justify-center;
+  }
+
+  .project-hero {
+    @apply rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-600 via-blue-500 to-sky-500 text-white px-5 py-5 shadow-[0_18px_40px_rgba(30,58,138,0.20)];
+  }
+
+  .project-hero-head {
+    @apply flex flex-col md:flex-row md:items-end md:justify-between gap-3;
+  }
+
+  .project-hero-title {
+    @apply text-2xl font-bold tracking-tight;
+  }
+
+  .project-hero-sub {
+    @apply text-sm text-blue-50/90 mt-1;
+  }
+
+  .project-hero-grid {
+    @apply grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5;
+  }
+
+  .project-hero-item {
+    @apply rounded-xl bg-white/12 border border-white/25 px-3 py-2;
+  }
+
+  .project-hero-item strong {
+    @apply block text-lg font-bold text-white tabular-nums;
+  }
+
+  .project-hero-item span {
+    @apply text-[11px] text-blue-100/90;
+  }
+
+  .project-toolbar {
+    @apply mt-4;
+  }
+
+  .project-card-head {
+    @apply flex items-start justify-between gap-2;
+  }
+
+  .project-card-meta {
+    @apply flex items-center gap-2 text-[11px] text-slate-500;
+  }
+
+  .project-chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] border font-semibold;
   }
 
   .app-shell-root {
