@@ -132,18 +132,31 @@ interface ResourceState {
 
 /** 세부항목 기반 진척률/작업량 자동 계산 (B방식) */
 function syncTaskProgress(taskId: string, taskDetails: TaskDetail[]) {
-  const assignments = useResourceStore.getState().assignments.filter((a) => a.task_id === taskId)
-  // 담당자 진척률이 있으면 담당자 진척률을 우선 소스로 사용
-  if (assignments.length > 0) return
-
   const details = taskDetails.filter((d) => d.task_id === taskId)
   if (details.length === 0) return // 세부항목 없으면 수동 모드 유지
   const task = useTaskStore.getState().tasks.find((t) => t.id === taskId)
   if (!task) return
 
   const doneCount = details.filter((d) => d.status === 'done').length
-  const progress = doneCount / details.length
+  const detailProgress = doneCount / details.length
   const workload = details.length // 1 세부항목 = 1 M/D
+
+  // 담당자 진척률이 하나라도 0% 초과로 입력된 경우에만 담당자값을 우선 적용.
+  // (기본값 0%로 생성된 담당자 배정이 세부항목 자동 100%를 덮어쓰지 않도록)
+  const assignments = useResourceStore.getState().assignments.filter((a) => a.task_id === taskId)
+  const hasMeaningfulAssignmentProgress = assignments.some((a) => (a.progress_percent || 0) > 0)
+  let progress = detailProgress
+  if (hasMeaningfulAssignmentProgress) {
+    const totalAllocation = assignments.reduce((sum, a) => sum + Math.max(0, a.allocation_percent || 0), 0)
+    const totalWeight = totalAllocation > 0 ? totalAllocation : assignments.length
+    if (totalWeight > 0) {
+      progress = assignments.reduce((sum, a) => {
+        const weight = totalAllocation > 0 ? Math.max(0, a.allocation_percent || 0) : 1
+        const memberProgress = Math.max(0, Math.min(100, a.progress_percent || 0)) / 100
+        return sum + (memberProgress * weight)
+      }, 0) / totalWeight
+    }
+  }
 
   // undo 스냅샷 없이 자동 업데이트
   useTaskStore.getState()._updateTaskSilent(
@@ -162,15 +175,26 @@ function syncTaskProgressFromAssignments(taskId: string, assignments: TaskAssign
   const taskAssigns = assignments.filter((a) => a.task_id === taskId)
   if (taskAssigns.length === 0) return
 
+  const details = useResourceStore.getState().taskDetails.filter((d) => d.task_id === taskId)
+  const hasDetails = details.length > 0
+
   const totalAllocation = taskAssigns.reduce((sum, a) => sum + Math.max(0, a.allocation_percent || 0), 0)
   const totalWeight = totalAllocation > 0 ? totalAllocation : taskAssigns.length
   if (totalWeight <= 0) return
 
-  const progress = taskAssigns.reduce((sum, a) => {
+  const assignmentProgress = taskAssigns.reduce((sum, a) => {
     const weight = totalAllocation > 0 ? Math.max(0, a.allocation_percent || 0) : 1
     const memberProgress = Math.max(0, Math.min(100, a.progress_percent || 0)) / 100
     return sum + (memberProgress * weight)
   }, 0) / totalWeight
+
+  let progress = assignmentProgress
+  if (hasDetails) {
+    const doneCount = details.filter((d) => d.status === 'done').length
+    const detailProgress = doneCount / details.length
+    const hasMeaningfulAssignmentProgress = taskAssigns.some((a) => (a.progress_percent || 0) > 0)
+    progress = hasMeaningfulAssignmentProgress ? assignmentProgress : detailProgress
+  }
 
   useTaskStore.getState()._updateTaskSilent(taskId, { actual_progress: progress })
 }

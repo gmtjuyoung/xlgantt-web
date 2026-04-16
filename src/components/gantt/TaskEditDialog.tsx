@@ -201,8 +201,8 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
         if (useActualOverride) {
           changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
         } else {
+          // 세부항목 자동 계산 모드 유지 (override만 해제)
           changes.actual_progress_override = undefined
-          changes.actual_progress = ((detailProgress ?? 0) / 100)
         }
       } else if (hasAssignments) {
         if (useActualOverride) {
@@ -453,7 +453,9 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                         </SelectContent>
                       </Select>
                       <Select value={String(newPredType)} onValueChange={(v) => v && setNewPredType(Number(v) as DependencyType)}>
-                        <SelectTrigger className="w-24 h-7 text-xs"><SelectValue>{DEP_TYPE_LABELS[newPredType]}</SelectValue></SelectTrigger>
+                        <SelectTrigger className="w-32 h-7 text-[11px]">
+                          <SelectValue>{DEP_TYPE_LABELS[newPredType]}</SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="1">{DEP_TYPE_LABELS[1]}</SelectItem>
                           <SelectItem value="2">{DEP_TYPE_LABELS[2]}</SelectItem>
@@ -497,7 +499,9 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                         </SelectContent>
                       </Select>
                       <Select value={String(newSuccType)} onValueChange={(v) => v && setNewSuccType(Number(v) as DependencyType)}>
-                        <SelectTrigger className="w-24 h-7 text-xs"><SelectValue>{DEP_TYPE_LABELS[newSuccType]}</SelectValue></SelectTrigger>
+                        <SelectTrigger className="w-32 h-7 text-[11px]">
+                          <SelectValue>{DEP_TYPE_LABELS[newSuccType]}</SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="1">{DEP_TYPE_LABELS[1]}</SelectItem>
                           <SelectItem value="2">{DEP_TYPE_LABELS[2]}</SelectItem>
