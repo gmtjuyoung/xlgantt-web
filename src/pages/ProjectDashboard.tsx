@@ -305,7 +305,7 @@ export function ProjectDashboard() {
     return (
       <div
         key={p.id}
-        className="bg-card border rounded-lg p-4 hover:shadow-md hover:border-primary/20 transition-all cursor-pointer group flex flex-col gap-3"
+        className="project-card group"
         onClick={() => navigate(`/projects/${p.id}`)}
       >
         {/* 헤더 */}
@@ -337,7 +337,7 @@ export function ProjectDashboard() {
           {isAdmin ? (
             <DropdownMenu>
               <DropdownMenuTrigger>
-                <button className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 hover:text-primary border border-dashed border-border/60 hover:border-primary/40 rounded-full px-2 py-0.5 transition-colors">
+                <button className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 hover:text-primary border border-dashed border-border/60 hover:border-primary/40 rounded-full px-2 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
                   <Tag className="h-2.5 w-2.5" />
                   {p.category || '카테고리 없음'}
                   <ChevronDown className="h-2.5 w-2.5" />
@@ -437,10 +437,10 @@ export function ProjectDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="std-page">
       {/* 헤더 */}
-      <header className="border-b bg-background sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 h-12 flex items-center justify-between">
+      <header className="std-page-header">
+        <div className="std-page-header-inner">
           <div className="flex items-center gap-2.5">
             <img src="/logo.png" alt="GMT" className="w-7 h-7 object-contain" />
             <span className="text-base font-bold tracking-tight">GMTgantts</span>
@@ -480,8 +480,8 @@ export function ProjectDashboard() {
       </header>
 
       {/* 본문 */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-end justify-between mb-6 gap-3">
+      <main className="std-page-main">
+        <div className="project-toolbar">
           <div>
             <h1 className="text-xl font-bold tracking-tight">프로젝트</h1>
             <p className="text-xs text-muted-foreground/60 mt-0.5">{projects.length}개</p>
@@ -532,7 +532,7 @@ export function ProjectDashboard() {
         </div>
 
         {projects.length === 0 ? (
-          <div className="text-center py-20 border border-dashed rounded-xl">
+          <div className="text-center py-20 border border-dashed border-slate-300 rounded-xl bg-white/40">
             <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground/20 mb-3" />
             <p className="text-sm font-medium text-muted-foreground/50">프로젝트가 없습니다</p>
             <Button size="sm" className="mt-4 h-8 text-xs" onClick={() => setShowCreate(true)}>
@@ -551,7 +551,7 @@ export function ProjectDashboard() {
                   {isAdmin && category !== '카테고리 없음' && (
                     <button
                       onClick={() => handleDeleteCategory(category)}
-                      className="text-[10px] text-muted-foreground/50 hover:text-rose-500 transition-colors"
+                      className="text-[10px] text-muted-foreground/50 hover:text-rose-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                       title="카테고리 삭제 (관리자 전용)"
                     >
                       × 제거
@@ -566,7 +566,7 @@ export function ProjectDashboard() {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {list.map(renderCard)}
                   </div>
                 )}
@@ -574,7 +574,7 @@ export function ProjectDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedProjects.map(renderCard)}
           </div>
         )}

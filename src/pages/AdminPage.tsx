@@ -110,9 +110,9 @@ export function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 h-12 flex items-center justify-between">
+    <div className="std-page">
+      <header className="std-page-header">
+        <div className="std-page-header-inner">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
               <BarChart3 className="h-3.5 w-3.5" />
@@ -127,7 +127,7 @@ export function AdminPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="std-page-main">
         <div className="flex items-end justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
@@ -150,7 +150,7 @@ export function AdminPage() {
           </div>
         </div>
 
-        <div className="border rounded-lg overflow-hidden">
+        <div className="std-surface overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -246,19 +246,19 @@ export function AdminPage() {
           </DialogHeader>
           <div className="space-y-3 mt-1">
             <div>
-              <label className="block text-xs font-medium mb-1">이름</label>
+              <label className="std-form-label">이름</label>
               <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름" className="h-8 text-sm" autoFocus disabled={addLoading} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">이메일</label>
+              <label className="std-form-label">이메일</label>
               <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@example.com" className="h-8 text-sm" disabled={addLoading} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">초기 비밀번호</label>
+              <label className="std-form-label">초기 비밀번호</label>
               <Input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6자 이상" className="h-8 text-sm" disabled={addLoading} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">역할</label>
+              <label className="std-form-label">역할</label>
               <Select value={newRole} onValueChange={(v) => setNewRole(v as UserRole)} disabled={addLoading}>
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
@@ -272,10 +272,10 @@ export function AdminPage() {
               </Select>
             </div>
             {addError && (
-              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded-md">{addError}</p>
+              <p className="std-feedback-error">{addError}</p>
             )}
             {authMode === 'supabase' && (
-              <p className="text-[11px] text-muted-foreground">Supabase Auth로 사용자가 생성되며, 즉시 승인됩니다.</p>
+              <p className="std-feedback-info">Supabase Auth로 사용자가 생성되며, 즉시 승인됩니다.</p>
             )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={() => setShowAddUser(false)} disabled={addLoading}>취소</Button>
@@ -298,12 +298,12 @@ export function AdminPage() {
               <strong>{resetTarget?.name}</strong> ({resetTarget?.email})
             </p>
             {authMode === 'supabase' && resetTarget?.id !== currentUser.id && (
-              <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 rounded-md">
+              <p className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-md border border-amber-200/80">
                 Supabase 모드에서는 다른 사용자의 비밀번호를 직접 변경할 수 없습니다. Service Role 키가 필요합니다.
               </p>
             )}
             <div>
-              <label className="block text-xs font-medium mb-1">새 비밀번호</label>
+              <label className="std-form-label">새 비밀번호</label>
               <Input value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} className="h-8 text-sm" disabled={resetLoading} />
             </div>
             <div className="flex justify-end gap-2 pt-1">

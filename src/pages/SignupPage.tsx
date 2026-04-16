@@ -59,9 +59,9 @@ export function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+    <div className="auth-shell">
+      <div className="auth-container">
+        <div className="auth-brand">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-primary-foreground mb-4">
             <BarChart3 className="h-7 w-7" />
           </div>
@@ -69,18 +69,18 @@ export function SignupPage() {
           <p className="text-sm text-muted-foreground mt-1">새 계정 만들기</p>
         </div>
 
-        <div className="bg-card border rounded-xl shadow-sm p-6">
+        <div className="auth-panel">
           <form onSubmit={handleSignup} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5">이름</label>
+              <label className="std-form-label">이름</label>
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" className="h-10" autoFocus disabled={loading} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5">이메일</label>
+              <label className="std-form-label">이메일</label>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className="h-10" disabled={loading} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5">비밀번호</label>
+              <label className="std-form-label">비밀번호</label>
               <div className="relative">
                 <Input
                   type={showPassword ? 'text' : 'password'}
@@ -93,7 +93,7 @@ export function SignupPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -110,7 +110,7 @@ export function SignupPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5">비밀번호 확인</label>
+              <label className="std-form-label">비밀번호 확인</label>
               <Input
                 type="password"
                 value={confirmPassword}
@@ -125,7 +125,7 @@ export function SignupPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded-md">{error}</p>
+              <p className="std-feedback-error">{error}</p>
             )}
 
             <Button type="submit" className="w-full h-10" disabled={!name || !email || !password || password !== confirmPassword || loading}>

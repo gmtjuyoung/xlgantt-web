@@ -260,9 +260,9 @@ export function MemberTasksView() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ===== Left Panel: Member List ===== */}
-      <div className="w-[320px] flex-shrink-0 border-r border-border/40 flex flex-col bg-background">
+      <div className="member-panel">
         {/* Summary */}
-        <div className="px-4 py-3 border-b border-border/40 bg-muted/20">
+        <div className="member-panel-head">
           <div className="flex items-center gap-2 mb-2">
             <UserCheck className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-bold text-foreground">담당자별 업무</h2>
@@ -284,7 +284,7 @@ export function MemberTasksView() {
         </div>
 
         {/* Search */}
-        <div className="px-3 py-2 border-b border-border/30">
+        <div className="member-panel-search">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
             <Input
@@ -306,7 +306,7 @@ export function MemberTasksView() {
           {filteredCompanies.map(({ company, members: companyMembers }) => (
             <div key={company.id}>
               {/* Company header */}
-              <div className="px-3 py-1.5 bg-muted/40 text-[11px] font-semibold flex items-center gap-1.5 sticky top-0 z-10">
+              <div className="member-company-head">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: company.color }} />
                 <span className="truncate">{company.name}</span>
                 <span className="text-muted-foreground/60 font-normal">({companyMembers.length})</span>
@@ -323,13 +323,16 @@ export function MemberTasksView() {
                 return (
                   <div
                     key={member.id}
-                    className={cn(
-                      'px-3 py-2 cursor-pointer transition-all border-l-2',
-                      isSelected
-                        ? 'bg-primary/5 border-l-primary'
-                        : 'border-l-transparent hover:bg-accent/40'
-                    )}
+                    className={cn('member-item', isSelected ? 'member-item--active' : 'member-item--idle')}
                     onClick={() => setSelectedMemberId(member.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedMemberId(member.id)
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-2">
                       {/* Avatar */}
@@ -392,7 +395,7 @@ export function MemberTasksView() {
       </div>
 
       {/* ===== Right Panel: Task List ===== */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
         {!selectedMember ? (
           /* Empty state */
           <div className="flex-1 flex items-center justify-center">
@@ -405,7 +408,7 @@ export function MemberTasksView() {
         ) : (
           <>
             {/* Selected member header */}
-            <div className="px-5 py-3 border-b border-border/40 bg-muted/10 flex items-center gap-3">
+            <div className="px-5 py-3 border-b border-slate-300 bg-white flex items-center gap-3">
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
                 style={{ backgroundColor: selectedMemberCompany?.color || '#888' }}
@@ -439,7 +442,7 @@ export function MemberTasksView() {
             </div>
 
             {/* 작업 검색 + 완료 숨기기 */}
-            <div className="px-4 py-2 border-b border-border/30 bg-muted/10 flex items-center gap-2">
+            <div className="px-4 py-2 border-b border-slate-300/90 bg-white flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
                 <Input
@@ -501,14 +504,14 @@ export function MemberTasksView() {
                     <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                       <button
                         onClick={() => setDetailViewMode('list')}
-                        className={cn('p-1 rounded', detailViewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
+                        className={cn('p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40', detailViewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
                         title="리스트 보기"
                       >
                         <List className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setDetailViewMode('card')}
-                        className={cn('p-1 rounded', detailViewMode === 'card' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
+                        className={cn('p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40', detailViewMode === 'card' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
                         title="카드 보기"
                       >
                         <LayoutGrid className="h-3.5 w-3.5" />
@@ -546,6 +549,14 @@ export function MemberTasksView() {
                             rowTone
                           )}
                           onClick={() => handleOpenTask(task.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              handleOpenTask(task.id)
+                            }
+                          }}
                           title={`${task.task_name} (클릭하여 상세 편집)`}
                         >
                           {/* 접기 토글 */}
@@ -554,7 +565,7 @@ export function MemberTasksView() {
                               <button
                                 onClick={toggleCollapse}
                                 className={cn(
-                                  'h-6 px-1.5 rounded border border-border/60 bg-background/80 hover:bg-accent/40 inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground transition-colors'
+                                  'h-6 px-1.5 rounded border border-border/60 bg-background/80 hover:bg-accent/40 inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
                                 )}
                                 title={isCollapsed ? '세부항목 펼치기' : '세부항목 접기'}
                               >
@@ -594,6 +605,14 @@ export function MemberTasksView() {
                                 key={detail.id}
                                 className="mtv-detail-row"
                                 onClick={() => setCardDetailId(detail.id)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    setCardDetailId(detail.id)
+                                  }
+                                }}
                               >
                                 <StatusBadge status={detail.status} />
                                 <span className={cn('flex-1 truncate', detail.status === 'done' && 'line-through text-muted-foreground/60')}>

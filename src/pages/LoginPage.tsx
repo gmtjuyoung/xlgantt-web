@@ -38,9 +38,9 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+    <div className="auth-shell">
+      <div className="auth-container">
+        <div className="auth-brand">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-primary-foreground mb-4">
             <BarChart3 className="h-7 w-7" />
           </div>
@@ -48,10 +48,10 @@ export function LoginPage() {
           <p className="text-sm text-muted-foreground mt-1">프로젝트 관리를 더 스마트하게</p>
         </div>
 
-        <div className="bg-card border rounded-xl shadow-sm p-6">
+        <div className="auth-panel">
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5">이메일</label>
+              <label className="std-form-label">이메일</label>
               <Input
                 type="email"
                 value={email}
@@ -63,7 +63,7 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5">비밀번호</label>
+              <label className="std-form-label">비밀번호</label>
               <div className="relative">
                 <Input
                   type={showPassword ? 'text' : 'password'}
@@ -76,7 +76,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -84,7 +84,7 @@ export function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded-md">{error}</p>
+              <p className="std-feedback-error">{error}</p>
             )}
 
             <Button type="submit" className="w-full h-10" disabled={loading}>
@@ -105,13 +105,13 @@ export function LoginPage() {
         </div>
 
         {authMode === 'local' && (
-          <div className="text-[11px] text-muted-foreground/40 text-center mt-4 space-y-0.5">
+          <div className="auth-hint">
             <p>관리자: admin@gmtc.kr / gmtvision!</p>
             <p>홍길동: hong@gmt.co.kr / 1234 · 김철수: kim@gmt.co.kr / 1234</p>
           </div>
         )}
         {authMode === 'supabase' && (
-          <div className="text-[11px] text-muted-foreground/40 text-center mt-4">
+          <div className="auth-hint">
             <p>Supabase 인증 모드</p>
           </div>
         )}

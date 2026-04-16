@@ -203,12 +203,12 @@ export function Header() {
 
   return (
     <>
-    <header className="flex h-12 items-center bg-slate-100 dark:bg-slate-800 border-b border-slate-300 dark:border-slate-700 px-4 gap-3 shadow-[0_2px_6px_rgba(0,0,0,0.08)] relative z-10">
+    <header className="workspace-header">
       {/* Home + Logo + Project Switcher */}
       <div className="flex items-center gap-2 mr-2 flex-shrink-0">
         <button
           onClick={() => navigate('/projects')}
-          className="w-7 h-7 rounded-md overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
+          className="w-7 h-7 rounded-md overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           title="프로젝트 목록으로"
         >
           <img src="/logo.png" alt="GMT" className="w-7 h-7 object-contain" />
@@ -216,7 +216,7 @@ export function Header() {
         <ProjectSwitcher />
       </div>
 
-      <div className="w-px h-6 bg-border/40 flex-shrink-0" />
+      <div className="chrome-divider h-6" />
 
       {/* View Tabs - Grouped (role-based) */}
       <nav className="hidden md:flex items-center">
@@ -225,23 +225,15 @@ export function Header() {
           if (visibleTabs.length === 0) return null
           return (
             <div key={gi} className="flex items-center">
-              {gi > 0 && <div className="w-px h-4 bg-border/40 mx-1" />}
+              {gi > 0 && <div className="w-px h-4 bg-slate-300/90 mx-1" />}
               {visibleTabs.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveView(tab.key)}
-                  className={cn(
-                    "relative flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium rounded-md transition-all",
-                    activeView === tab.key
-                      ? "text-primary bg-primary/8"
-                      : "text-muted-foreground/70 hover:text-foreground hover:bg-accent/50"
-                  )}
+                  className={cn('chrome-pill', activeView === tab.key ? 'chrome-pill--active' : '')}
                 >
                   {tab.icon}
                   <span>{tab.label}</span>
-                  {activeView === tab.key && (
-                    <span className="absolute -bottom-[9px] left-2 right-2 h-[2px] bg-primary rounded-full" />
-                  )}
                 </button>
               ))}
             </div>
@@ -275,7 +267,7 @@ export function Header() {
             key={tab.key}
             variant={activeView === tab.key ? 'default' : 'ghost'}
             size="icon"
-            className="h-7 w-7"
+            className="chrome-icon-btn"
             onClick={() => setActiveView(tab.key)}
             title={tab.title}
           >
@@ -284,7 +276,7 @@ export function Header() {
         ))}
       </div>
 
-      <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+      <div className="chrome-divider" />
 
       {/* Status Date */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -299,7 +291,7 @@ export function Header() {
         {project?.status_date && (
           <button
             onClick={() => updateProject({ status_date: undefined })}
-            className="p-0.5 rounded hover:bg-red-50 text-muted-foreground/50 hover:text-red-500 transition-colors"
+            className="p-0.5 rounded hover:bg-red-50 text-muted-foreground/50 hover:text-red-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             title="기준일 해제"
           >
             <X className="h-3.5 w-3.5" />
@@ -307,10 +299,10 @@ export function Header() {
         )}
       </div>
 
-      <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+      <div className="chrome-divider" />
 
       {/* Export */}
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleExport} title="엑셀 내보내기">
+      <Button variant="ghost" size="icon" className="chrome-icon-btn" onClick={handleExport} title="엑셀 내보내기">
         <Download className="h-3.5 w-3.5" />
       </Button>
 
@@ -319,7 +311,7 @@ export function Header() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 relative"
+          className="chrome-icon-btn relative"
           onClick={() => setBellOpen((v) => !v)}
           title="알림"
         >
@@ -331,7 +323,7 @@ export function Header() {
           )}
         </Button>
         {bellOpen && (
-          <div className="absolute right-0 top-9 w-72 bg-background border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+          <div className="absolute right-0 top-9 w-72 chrome-popover z-50">
             <div className="px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between">
               <div>
                 <span className="text-xs font-semibold">알림</span>
@@ -339,7 +331,7 @@ export function Header() {
               </div>
               {bellCount > 0 && (
                 <button
-                  className="text-[10px] text-muted-foreground hover:text-primary"
+                  className="text-[10px] text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                   onClick={() => setDismissedIds(new Set(notifications.map((n) => n.id)))}
                 >
                   모두 읽음
@@ -359,7 +351,7 @@ export function Header() {
                     {n.type === 'delayed_task' && <Clock className="h-3 w-3 text-orange-500 mt-0.5 flex-shrink-0" />}
                     <span className={cn('text-[11px] flex-1', n.color)}>{n.text}</span>
                     <button
-                      className="text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover/noti:opacity-100 flex-shrink-0"
+                      className="text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover/noti:opacity-100 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                       onClick={(e) => { e.stopPropagation(); setDismissedIds((prev) => new Set([...prev, n.id])) }}
                     >
                       <X className="h-3 w-3" />
@@ -370,7 +362,7 @@ export function Header() {
             </div>
             <div className="px-3 py-2 border-t border-border/40">
               <button
-                className="w-full text-center text-xs font-medium text-primary hover:underline"
+                className="w-full text-center text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                 onClick={() => {
                   setActiveView('mytasks')
                   setBellOpen(false)
@@ -383,17 +375,17 @@ export function Header() {
         )}
       </div>
 
-      <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+      <div className="chrome-divider" />
 
       {/* Zoom + Date Range + Link */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleZoom(-1)} title="축소">
+        <Button variant="ghost" size="icon" className="chrome-icon-btn" onClick={() => handleZoom(-1)} title="축소">
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
         <span className="text-xs font-medium text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5 min-w-[24px] text-center select-none">
           {zoomLevel === 1 ? '일' : zoomLevel === 2 ? '주' : '월'}
         </span>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleZoom(1)} title="확대">
+        <Button variant="ghost" size="icon" className="chrome-icon-btn" onClick={() => handleZoom(1)} title="확대">
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
 
@@ -426,12 +418,12 @@ export function Header() {
           )}
         </Button>
 
-        <div className="w-px h-4 bg-border/30 mx-0.5" />
+        <div className="w-px h-4 bg-slate-300/90 mx-0.5" />
 
         <Button
           variant={linkMode ? 'default' : 'ghost'}
           size="icon"
-          className={cn("h-7 w-7", linkMode && "ring-2 ring-orange-400 ring-offset-1")}
+          className={cn("chrome-icon-btn", linkMode && "ring-2 ring-orange-400 ring-offset-1")}
           onClick={toggleLinkMode}
           title="의존관계 연결 모드"
         >
@@ -447,7 +439,7 @@ export function Header() {
       {/* User Menu */}
       {currentUser && (
         <>
-          <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+          <div className="chrome-divider" />
           <DropdownMenu>
             <DropdownMenuTrigger>
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 flex-shrink-0 px-2">
