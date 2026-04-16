@@ -69,7 +69,6 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   const currentUser = useAuthStore((s) => s.currentUser)
   const {
     taskDetails,
-    members,
     assignments,
     updateTaskDetail,
     uploadAttachment,
@@ -141,10 +140,6 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
     }
     return []
   }, [detail, assignments])
-
-  const assigneeNames = useMemo(() => {
-    return effectiveAssigneeIds.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean) as string[]
-  }, [effectiveAssigneeIds, members])
 
   // ESC key to close
   useEffect(() => {
@@ -295,17 +290,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
       {/* Assignee */}
       <div>
         <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">담당자</label>
-        {assigneeNames.length > 0 && (
-          <div className="text-sm text-foreground mb-1 px-1">
-            {assigneeNames.join(', ')}
-          </div>
-        )}
         <MemberPicker
           value={effectiveAssigneeIds}
           onChange={(ids) =>
             updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })
           }
-          placeholder={assigneeNames.length > 0 ? '담당자 변경...' : '담당자 선택...'}
+          placeholder="담당자 선택..."
           size="sm"
         />
       </div>
@@ -351,10 +341,11 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
       </div>
 
       {/* Parent task info */}
-      <div className="pt-2 border-t border-border/30">
-        <div className="flex items-center gap-2 mb-2">
-          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">소속 작업</span>
+      <div className="pt-2">
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-slate-200/70 dark:bg-slate-700/50 border-b-2 border-primary/30 rounded-t">
+          <div className="w-1 h-4 bg-primary rounded-full flex-shrink-0" />
+          <BarChart3 className="h-4 w-4 text-primary" />
+          <span className="text-xs font-bold tracking-wide text-foreground uppercase">소속 작업</span>
         </div>
         <div className="space-y-1.5 text-[11px]">
           <div className="flex items-start gap-1">
@@ -391,12 +382,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   // ─── Attachments section ───
   const renderAttachments = () => (
     <div>
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-        <div className="w-1 h-4 bg-primary rounded-full" />
+      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-slate-200/70 dark:bg-slate-700/50 border-b-2 border-primary/30 rounded-t">
+        <div className="w-1 h-4 bg-primary rounded-full flex-shrink-0" />
         <Paperclip className="h-4 w-4 text-primary" />
-        <span className="text-sm font-bold text-foreground">첨부파일</span>
+        <span className="text-xs font-bold tracking-wide text-foreground uppercase">첨부파일</span>
         {attachments.length > 0 && (
-          <Badge className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20">{attachments.length}</Badge>
+          <Badge className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20 ml-auto">{attachments.length}</Badge>
         )}
       </div>
 
@@ -480,25 +471,17 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   // ─── Memo section ───
   const renderMemo = () => (
     <div>
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-        <div className="w-1 h-4 bg-primary rounded-full" />
+      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-slate-200/70 dark:bg-slate-700/50 border-b-2 border-primary/30 rounded-t">
+        <div className="w-1 h-4 bg-primary rounded-full flex-shrink-0" />
         <FileText className="h-4 w-4 text-primary" />
-        <span className="text-sm font-bold text-foreground">메모</span>
+        <span className="text-xs font-bold tracking-wide text-foreground uppercase">메모</span>
       </div>
       <textarea
-        ref={(el) => {
-          (textareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el
-          if (el) { el.style.height = 'auto'; el.style.height = Math.max(150, el.scrollHeight) + 'px' }
-        }}
+        ref={textareaRef}
         placeholder="메모를 입력하세요..."
         value={detail.description || ''}
-        onChange={(e) => {
-          updateTaskDetail(detail.id, { description: e.target.value })
-          const el = e.target
-          el.style.height = 'auto'
-          el.style.height = Math.max(150, el.scrollHeight) + 'px'
-        }}
-        className="w-full text-sm text-foreground bg-white border border-border rounded-lg px-4 py-3 resize-none outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/40 transition-colors"
+        onChange={(e) => updateTaskDetail(detail.id, { description: e.target.value })}
+        className="w-full text-sm text-foreground bg-white border border-border rounded-lg px-4 py-3 resize-y outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/40 transition-colors"
         style={{ minHeight: 150 }}
       />
     </div>
@@ -507,12 +490,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
   // ─── Comments section ───
   const renderComments = () => (
     <div>
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-        <div className="w-1 h-4 bg-primary rounded-full" />
+      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-slate-200/70 dark:bg-slate-700/50 border-b-2 border-primary/30 rounded-t">
+        <div className="w-1 h-4 bg-primary rounded-full flex-shrink-0" />
         <MessageSquare className="h-4 w-4 text-primary" />
-        <span className="text-sm font-bold text-foreground">코멘트</span>
+        <span className="text-xs font-bold tracking-wide text-foreground uppercase">코멘트</span>
         {comments.length > 0 && (
-          <Badge className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20">{comments.length}</Badge>
+          <Badge className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20 ml-auto">{comments.length}</Badge>
         )}
       </div>
 
@@ -698,17 +681,12 @@ export function CardDetailModal({ detailId, open, onClose }: CardDetailModalProp
               <div className="flex items-center gap-3">
                 <label className="text-[11px] font-medium text-muted-foreground/70 w-12 flex-shrink-0">담당자</label>
                 <div className="flex-1">
-                  {assigneeNames.length > 0 && (
-                    <div className="text-sm text-foreground mb-1">
-                      {assigneeNames.join(', ')}
-                    </div>
-                  )}
                   <MemberPicker
                     value={effectiveAssigneeIds}
                     onChange={(ids) =>
                       updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })
                     }
-                    placeholder={assigneeNames.length > 0 ? '담당자 변경...' : '담당자 선택...'}
+                    placeholder="담당자 선택..."
                     size="sm"
                   />
                 </div>

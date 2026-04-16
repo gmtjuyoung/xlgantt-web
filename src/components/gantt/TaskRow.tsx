@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { ChevronRight, ChevronLeft, GripVertical } from 'lucide-react'
+import { ChevronRight, GripVertical, CheckCircle2 } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { ROW_HEIGHT } from '@/lib/types'
 import { useTaskStore } from '@/stores/task-store'
@@ -113,7 +113,9 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
               {task.is_collapsed ? (
                 <ChevronRight className="h-4 w-4" />
               ) : (
-                <ChevronLeft className="h-4 w-4" />
+                <div className="h-4 w-4 flex items-center justify-center">
+                  <div className="w-[2px] h-3 bg-current rounded-full" />
+                </div>
               )}
             </button>
           ) : (
@@ -179,66 +181,74 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
       )
     }
 
-    // 진척률 (actual_progress) - 프로그레스 바
+    // 진척률 (actual_progress) - 모던 바 + 100% 완료 배지
     if (col.id === 'actual_progress') {
+      const pct = Math.round(task.actual_progress * 100)
       return (
         <div
           key={col.id}
           style={{ width: col.width, minWidth: col.width }}
-          className="flex items-center px-1 border-r gap-1"
+          className="flex items-center justify-center px-2 border-r"
         >
-          {task.actual_progress_override != null && (
-            <span className="text-[10px] text-amber-600 font-medium">🔒 수동</span>
-          )}
-          <div className="flex-1 h-4 bg-muted/60 rounded-full overflow-hidden relative shadow-inner">
-            <div
-              className="h-full rounded-full transition-all duration-300 ease-out"
-              style={{
-                width: `${task.actual_progress * 100}%`,
-                background: task.actual_progress >= 1
-                  ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                  : task.actual_progress >= 0.5
-                    ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                    : task.actual_progress > 0
-                      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                      : 'transparent',
-              }}
-            />
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-foreground/60">
-              {Math.round(task.actual_progress * 100)}%
+          {task.actual_progress >= 1 ? (
+            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+              <CheckCircle2 className="h-3 w-3" />
+              <span className="text-[10px] font-bold">완료</span>
             </span>
-          </div>
+          ) : pct === 0 ? (
+            <span className="text-[10px] text-muted-foreground/40">—</span>
+          ) : (
+            <div className="flex items-center gap-1.5 w-full">
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: pct >= 75 ? '#2563eb' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f59e0b' : '#f97316',
+                  }}
+                />
+              </div>
+              <span className="text-[10px] font-bold tabular-nums text-foreground/70 w-7 text-right">
+                {pct}%
+              </span>
+            </div>
+          )}
         </div>
       )
     }
 
-    // 계획진척률 (planned_progress) - 프로그레스 바 (파란색 계열)
+    // 계획진척률 (planned_progress) - 모던 바 + 100% 완료 배지
     if (col.id === 'planned_progress') {
+      const pct = Math.round(task.planned_progress * 100)
       return (
         <div
           key={col.id}
           style={{ width: col.width, minWidth: col.width }}
-          className="flex items-center px-1 border-r gap-1"
+          className="flex items-center justify-center px-2 border-r"
         >
-          {task.planned_progress_override != null && (
-            <span className="text-[10px] text-violet-600 font-medium">🔒 수동</span>
-          )}
-          <div className="flex-1 h-4 bg-muted/60 rounded-full overflow-hidden relative shadow-inner">
-            <div
-              className="h-full rounded-full transition-all duration-300 ease-out"
-              style={{
-                width: `${task.planned_progress * 100}%`,
-                background: task.planned_progress >= 1
-                  ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
-                  : task.planned_progress > 0
-                    ? 'linear-gradient(135deg, #a78bfa, #8b5cf6)'
-                    : 'transparent',
-              }}
-            />
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-foreground/60">
-              {Math.round(task.planned_progress * 100)}%
+          {task.planned_progress >= 1 ? (
+            <span className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full border border-violet-200">
+              <CheckCircle2 className="h-3 w-3" />
+              <span className="text-[10px] font-bold">완료</span>
             </span>
-          </div>
+          ) : pct === 0 ? (
+            <span className="text-[10px] text-muted-foreground/40">—</span>
+          ) : (
+            <div className="flex items-center gap-1.5 w-full">
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: '#8b5cf6',
+                  }}
+                />
+              </div>
+              <span className="text-[10px] font-bold tabular-nums text-foreground/70 w-7 text-right">
+                {pct}%
+              </span>
+            </div>
+          )}
         </div>
       )
     }
@@ -257,6 +267,43 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
             boolValue ? "bg-primary/10 text-primary" : "text-muted-foreground/40"
           )}>
             {boolValue ? 'Y' : 'N'}
+          </span>
+        </div>
+      )
+    }
+
+    // WBS 코드 - 좌측 세로 컬러 바 (레벨별 테마 색 + 계단식 뎁스 표시)
+    if (col.id === 'wbs_code') {
+      // 테마 팔레트의 서로 다른 hue를 레벨 1~6에 매핑
+      const levelColorIdx = [0, 2, 7, 4, 10, 13]
+      const idx = levelColorIdx[Math.min(task.wbs_level - 1, 5)] ?? 0
+      const barColor = theme.colors[idx] || '#888888'
+      // 레벨에 따라 바 두께 살짝 감소 (L1 가장 굵음)
+      const barWidth = Math.max(5 - (task.wbs_level - 1), 2)
+      // 레벨에 따라 바 좌측 오프셋 증가 (계단식 뎁스)
+      const barOffset = (task.wbs_level - 1) * 4
+      // 텍스트도 살짝 따라 들여쓰기
+      const textPadding = 8 + barOffset
+      return (
+        <div
+          key={col.id}
+          style={{ width: col.width, minWidth: col.width }}
+          className="flex items-center justify-start border-r relative"
+        >
+          <div
+            className="absolute top-0.5 bottom-0.5 rounded-sm"
+            style={{
+              backgroundColor: barColor,
+              width: `${barWidth}px`,
+              left: `${barOffset}px`,
+              boxShadow: '1px 0 2px rgba(0,0,0,0.15), -1px 0 0 rgba(255,255,255,0.3)',
+            }}
+          />
+          <span
+            className="font-semibold text-foreground"
+            style={{ paddingLeft: `${textPadding}px` }}
+          >
+            {task.wbs_code}
           </span>
         </div>
       )
@@ -321,10 +368,23 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
     )
   }
 
+  // 레벨별 폰트 크기: 레벨1이 가장 크고 내려갈수록 작아짐 (식별성 강화)
+  const levelFontSize = (() => {
+    switch (task.wbs_level) {
+      case 1: return 'text-[15px]'
+      case 2: return 'text-[14px]'
+      case 3: return 'text-[13px]'
+      case 4: return 'text-[12px]'
+      case 5: return 'text-[11px]'
+      default: return 'text-[10px]'
+    }
+  })()
+
   return (
     <div
       className={cn(
-        'group/row flex border-b border-border/25 cursor-pointer text-sm transition-all duration-100 relative',
+        'group/row flex border-b border-slate-300 dark:border-slate-700 cursor-pointer transition-all duration-100 relative',
+        levelFontSize,
         isSelected && 'bg-primary/8 border-l-2 border-l-primary',
         !isSelected && task.is_group && task.wbs_level === 1 && 'bg-slate-100 dark:bg-slate-800/60 font-bold border-b-border/50',
         !isSelected && task.is_group && task.wbs_level === 2 && 'bg-blue-50/60 dark:bg-blue-900/20 font-semibold',

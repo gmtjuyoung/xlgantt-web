@@ -14,6 +14,7 @@ import {
   TrendingUp,
   CalendarCheck,
   Archive,
+  ListOrdered,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -263,7 +264,7 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
   )
 
   return (
-    <div className="flex items-center h-10 px-4 border-b border-border/40 bg-gradient-to-b from-muted/10 to-muted/30 gap-1">
+    <div className="flex items-center h-10 px-4 border-b border-slate-200 dark:border-slate-800 bg-background gap-1">
       <ToolbarButton icon={Undo2} label="실행 취소 (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
       <ToolbarButton icon={Redo2} label="다시 실행 (Ctrl+Y)" onClick={redo} disabled={!canRedo} />
 
@@ -285,6 +286,17 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
       <Separator orientation="vertical" className="mx-1 h-5" />
 
       <ToolbarButton icon={FileEdit} label="작업 상세 편집" onClick={handleEditTask} disabled={!selectedId} />
+
+      <Separator orientation="vertical" className="mx-1 h-5" />
+
+      <ToolbarButton
+        icon={ListOrdered}
+        label="WBS 순번 재정렬 (전체 재계산)"
+        onClick={() => {
+          if (!confirm('전체 작업의 WBS 코드와 순번을 트리 구조 기준으로 재계산하시겠습니까?')) return
+          recalcWBS()
+        }}
+      />
 
       <Separator orientation="vertical" className="mx-1 h-5" />
 

@@ -7,6 +7,7 @@ export interface Project {
   id: string
   name: string
   description?: string
+  category?: string
   start_date: string // ISO date
   end_date: string
   owner_id: string
@@ -143,10 +144,10 @@ export type DependencyType = 1 | 2 | 3 | 4
 // 4 = SF (Start-to-Finish)
 
 export const DEP_TYPE_LABELS: Record<DependencyType, string> = {
-  1: 'FS',
-  2: 'SS',
-  3: 'FF',
-  4: 'SF',
+  1: '종료→시작',
+  2: '시작→시작',
+  3: '종료→종료',
+  4: '시작→종료',
 }
 
 export type CalendarType = 'STD' | 'UD1' | 'UD2'

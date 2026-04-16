@@ -39,6 +39,7 @@ export function GanttChart({
   const showProgressLine = useUIStore((s) => s.showProgressLine)
   const ganttOptions = useUIStore((s) => s.ganttOptions)
   const project = useProjectStore((s) => s.currentProject)
+  const selectedTaskIds = useTaskStore((s) => s.selectedTaskIds)
 
   // ESC key to cancel link mode
   useEffect(() => {
@@ -197,16 +198,41 @@ export function GanttChart({
             />
           ))}
 
-          {/* Row grid lines */}
+          {/* Selected row highlights — TaskRow의 선택 색과 동기화 */}
+          {tasks.map((task, index) => {
+            if (!selectedTaskIds.has(task.id)) return null
+            return (
+              <g key={`sel-${task.id}`}>
+                {/* 연한 primary 배경 (TaskRow의 bg-primary/8과 동일 톤) */}
+                <rect
+                  x={0}
+                  y={index * ROW_HEIGHT}
+                  width={totalWidth}
+                  height={ROW_HEIGHT}
+                  fill="rgba(59, 130, 246, 0.1)"
+                />
+                {/* 좌측 primary accent bar (TaskRow의 border-l-2와 동일) */}
+                <rect
+                  x={0}
+                  y={index * ROW_HEIGHT}
+                  width={2}
+                  height={ROW_HEIGHT}
+                  fill="#3b82f6"
+                />
+              </g>
+            )
+          })}
+
+          {/* Row grid lines — TaskRow의 border-b와 정렬 (row 하단에 그림) */}
           {tasks.map((_, index) => (
             <line
               key={`grid-${index}`}
               x1={0}
-              y1={index * ROW_HEIGHT}
+              y1={(index + 1) * ROW_HEIGHT - 0.5}
               x2={totalWidth}
-              y2={index * ROW_HEIGHT}
-              stroke="oklch(0.93 0.005 250)"
-              strokeWidth={0.3}
+              y2={(index + 1) * ROW_HEIGHT - 0.5}
+              stroke="#cbd5e1"
+              strokeWidth={1}
             />
           ))}
 
