@@ -215,7 +215,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
     const existingMemberIds = new Set(taskAssignments.map(a => a.member_id))
     newAssignMemberIds.forEach((memberId) => {
       if (!existingMemberIds.has(memberId)) {
-        addAssignment({ id: crypto.randomUUID(), task_id: taskId, member_id: memberId, allocation_percent: parseInt(newAssignPercent) || 100 })
+        addAssignment({ id: crypto.randomUUID(), task_id: taskId, member_id: memberId, allocation_percent: parseInt(newAssignPercent) || 100, progress_percent: 0 })
       }
     })
     setNewAssignMemberIds([])
@@ -333,12 +333,23 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                       </div>
                       <span className="text-xs font-medium flex-1 truncate">{a.member?.name || '?'}</span>
                       <span className="text-[10px] text-muted-foreground/60">{a.company?.shortName}</span>
-                      <Input
-                        type="number" min={1} max={100} value={a.allocation_percent}
-                        onChange={(e) => updateAssignment(a.id, { allocation_percent: parseInt(e.target.value) || 100 })}
-                        className="w-14 h-5 text-[11px] text-right px-1.5 border-transparent hover:border-border focus:border-border"
-                      />
-                      <span className="text-[10px] text-muted-foreground/50">%</span>
+                        <span className="text-[10px] text-muted-foreground/50">투입</span>
+                        <Input
+                          type="number" min={1} max={100} value={a.allocation_percent}
+                          onChange={(e) => updateAssignment(a.id, { allocation_percent: parseInt(e.target.value) || 100 })}
+                          className="w-12 h-5 text-[11px] text-right px-1.5 border-transparent hover:border-border focus:border-border"
+                        />
+                        <span className="text-[10px] text-muted-foreground/50">%</span>
+                        <span className="text-[10px] text-muted-foreground/50">진척</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={a.progress_percent ?? 0}
+                          onChange={(e) => updateAssignment(a.id, { progress_percent: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                          className="w-12 h-5 text-[11px] text-right px-1.5 border-transparent hover:border-border focus:border-border"
+                        />
+                        <span className="text-[10px] text-muted-foreground/50">%</span>
                       <Button variant="ghost" size="icon" className="h-4 w-4 opacity-0 group-hover/assign:opacity-60" onClick={() => removeAssignment(a.id)}>
                         <X className="h-2.5 w-2.5 text-red-500" />
                       </Button>

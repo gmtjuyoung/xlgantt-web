@@ -226,7 +226,7 @@ export function MemberTasksView() {
       const task = tasks.find((t) => t.id === taskId && !t.is_group)
       if (!task) continue
       if (hideDone && task.actual_progress >= 1) continue
-      const assign = memberAssigns.find((a) => a.task_id === taskId) || { id: '', task_id: taskId, member_id: selectedMemberId, allocation_percent: 100 }
+      const assign = memberAssigns.find((a) => a.task_id === taskId) || { id: '', task_id: taskId, member_id: selectedMemberId, allocation_percent: 100, progress_percent: 0 }
       const dets = taskDetails.filter((d) => d.task_id === task.id).sort((a, b) => a.sort_order - b.sort_order)
       result.push({ task, assignment: assign, details: hideDone ? dets.filter((d) => d.status !== 'done') : dets })
     }

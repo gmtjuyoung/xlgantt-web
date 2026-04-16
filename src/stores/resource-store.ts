@@ -57,6 +57,7 @@ function dbToAssignment(row: Record<string, unknown>): TaskAssignment {
     task_id: row.task_id as string,
     member_id: row.member_id as string,
     allocation_percent: (row.allocation_percent as number) ?? 100,
+    progress_percent: (row.progress_percent as number) ?? 0,
   }
 }
 
@@ -149,6 +150,30 @@ function syncTaskProgress(taskId: string, taskDetails: TaskDetail[]) {
   )
 }
 
+/** 담당자별 진척률 기반 자동 계산 (세부항목 없을 때만) */
+function syncTaskProgressFromAssignments(taskId: string, assignments: TaskAssignment[], taskDetails: TaskDetail[]) {
+  const hasDetails = taskDetails.some((d) => d.task_id === taskId)
+  if (hasDetails) return
+
+  const task = useTaskStore.getState().tasks.find((t) => t.id === taskId)
+  if (!task || task.actual_progress_override != null) return
+
+  const taskAssigns = assignments.filter((a) => a.task_id === taskId)
+  if (taskAssigns.length === 0) return
+
+  const totalAllocation = taskAssigns.reduce((sum, a) => sum + Math.max(0, a.allocation_percent || 0), 0)
+  const totalWeight = totalAllocation > 0 ? totalAllocation : taskAssigns.length
+  if (totalWeight <= 0) return
+
+  const progress = taskAssigns.reduce((sum, a) => {
+    const weight = totalAllocation > 0 ? Math.max(0, a.allocation_percent || 0) : 1
+    const memberProgress = Math.max(0, Math.min(100, a.progress_percent || 0)) / 100
+    return sum + (memberProgress * weight)
+  }, 0) / totalWeight
+
+  useTaskStore.getState()._updateTaskSilent(taskId, { actual_progress: progress })
+}
+
 // 샘플 데이터 제거 - DB가 단일 진실 소스
 
 export const useResourceStore = create<ResourceState>()((set, get) => ({
@@ -227,6 +252,14 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
     }
 
     // 세부항목이 있는 작업들의 진척률/작업량 자동 동기화
+    if (taskData && taskData.length > 0) {
+      const allTaskIds = taskData.map((t: Record<string, unknown>) => t.id as string)
+      for (const tid of allTaskIds) {
+        syncTaskProgressFromAssignments(tid, get().assignments, get().taskDetails)
+      }
+    }
+
+    // 세부항목이 있는 작업들은 세부항목 기준 진척률 우선
     const allDetails = get().taskDetails
     const taskIdsWithDetails = [...new Set(allDetails.map((d) => d.task_id))]
     for (const tid of taskIdsWithDetails) {
@@ -326,11 +359,14 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
       task_id: assignment.task_id,
       member_id: assignment.member_id,
       allocation_percent: assignment.allocation_percent,
+      progress_percent: assignment.progress_percent ?? 0,
     }).then(({ error }) => {
       if (error) console.error('배정 추가 실패:', error.message)
     })
+    syncTaskProgressFromAssignments(assignment.task_id, get().assignments, get().taskDetails)
   },
   updateAssignment: (id, changes) => {
+    const before = get().assignments.find((a) => a.id === id)
     set((s) => ({
       assignments: s.assignments.map((a) => a.id === id ? { ...a, ...changes } : a),
     }))
@@ -343,12 +379,21 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
         if (error) console.error('배정 업데이트 실패:', error.message)
       })
     }
+    const updated = get().assignments.find((a) => a.id === id)
+    const taskId = updated?.task_id || before?.task_id
+    if (taskId) {
+      syncTaskProgressFromAssignments(taskId, get().assignments, get().taskDetails)
+    }
   },
   removeAssignment: (id) => {
+    const before = get().assignments.find((a) => a.id === id)
     set((s) => ({ assignments: s.assignments.filter((a) => a.id !== id) }))
     supabase.from('task_assignments').delete().eq('id', id).then(({ error }) => {
       if (error) console.error('배정 삭제 실패:', error.message)
     })
+    if (before?.task_id) {
+      syncTaskProgressFromAssignments(before.task_id, get().assignments, get().taskDetails)
+    }
   },
   getTaskAssignments: (taskId) => get().assignments.filter((a) => a.task_id === taskId),
 
@@ -388,6 +433,7 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
             task_id: detail.task_id,
             member_id: memberId,
             allocation_percent: 100,
+            progress_percent: 0,
           })
         }
       }
@@ -458,6 +504,7 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
             task_id: before.task_id,
             member_id: memberId,
             allocation_percent: 100,
+            progress_percent: 0,
           })
         }
       }

@@ -45,6 +45,22 @@ function getProgressWeight(task: Task): number {
   return typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : 1
 }
 
+function stripOverrideColumns(payload: Record<string, unknown>): Record<string, unknown> {
+  const fallback = { ...payload }
+  delete fallback.planned_progress_override
+  delete fallback.actual_progress_override
+  return fallback
+}
+
+function isMissingOverrideColumnError(error: { message?: string; details?: string; hint?: string; code?: string } | null): boolean {
+  if (!error) return false
+  const text = `${error.code || ''} ${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase()
+  return text.includes('planned_progress_override') ||
+    text.includes('actual_progress_override') ||
+    text.includes('column') && text.includes('does not exist') ||
+    text.includes('pgrst204')
+}
+
 /** 그룹 작업의 날짜/기간/작업량을 자식 기준으로 갱신 */
 function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
   const changedTask = tasks.find((t) => t.id === changedTaskId)
@@ -405,8 +421,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       details: `작업 '${task.task_name}' 추가`,
     })
     // 서버 저장 (비동기)
-    supabase.from('tasks').insert(taskToDb(task)).then(({ error }) => {
-      if (error) console.error('작업 추가 실패:', error.message)
+    const payload = taskToDb(task)
+    supabase.from('tasks').insert(payload).then(async ({ error }) => {
+      if (!error) return
+      if (isMissingOverrideColumnError(error)) {
+        const fallback = stripOverrideColumns(payload)
+        const { error: retryError } = await supabase.from('tasks').insert(fallback)
+        if (retryError) {
+          console.error('작업 추가(레거시 fallback) 실패:', retryError.message)
+        }
+        return
+      }
+      console.error('작업 추가 실패:', error.message)
     })
   },
 
@@ -472,8 +498,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     for (const [key, value] of Object.entries(normalizedChanges)) {
       dbChanges[key] = value ?? null
     }
-    supabase.from('tasks').update(dbChanges).eq('id', taskId).then(({ error }) => {
-      if (error) console.error('작업 업데이트 실패:', error.message)
+    supabase.from('tasks').update(dbChanges).eq('id', taskId).then(async ({ error }) => {
+      if (!error) return
+      if (isMissingOverrideColumnError(error)) {
+        const fallback = stripOverrideColumns(dbChanges)
+        const { error: retryError } = await supabase.from('tasks').update(fallback).eq('id', taskId)
+        if (retryError) {
+          console.error('작업 업데이트(레거시 fallback) 실패:', retryError.message)
+        }
+        return
+      }
+      console.error('작업 업데이트 실패:', error.message)
     })
   },
 
