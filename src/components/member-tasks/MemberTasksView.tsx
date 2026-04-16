@@ -522,12 +522,12 @@ export function MemberTasksView() {
                     const endStr = task.planned_end ? format(new Date(task.planned_end), 'MM/dd') : '-'
                     const progressPct = Math.round((task.actual_progress || 0) * 100)
                     const isCollapsed = collapsedTasks.has(task.id)
-                    const toggleTone =
+                    const rowTone =
                       progressPct >= 100
-                        ? '!border-emerald-400 !bg-emerald-100 !text-emerald-800 hover:!bg-emerald-200/80'
+                        ? 'border-l-2 border-l-emerald-500 bg-emerald-50/50 hover:bg-emerald-100/50'
                         : progressPct > 0
-                          ? '!border-blue-400 !bg-blue-100 !text-blue-800 hover:!bg-blue-200/80'
-                          : '!border-amber-400 !bg-amber-100 !text-amber-800 hover:!bg-amber-200/80'
+                          ? 'border-l-2 border-l-blue-500 bg-blue-50/45 hover:bg-blue-100/50'
+                          : 'border-l-2 border-l-amber-500 bg-amber-50/45 hover:bg-amber-100/50'
                     const toggleCollapse = (e: React.MouseEvent) => {
                       e.stopPropagation()
                       setCollapsedTasks((prev) => {
@@ -541,7 +541,10 @@ export function MemberTasksView() {
                       <div key={`${task.id}_${assignment.id}`}>
                         {/* Task row */}
                         <div
-                          className="grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 px-5 py-2 hover:bg-accent/30 cursor-pointer items-center group border-b border-border/20 transition-colors"
+                          className={cn(
+                            'grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 px-5 py-2 cursor-pointer items-center group border-b border-border/20 transition-colors',
+                            rowTone
+                          )}
                           onClick={() => handleOpenTask(task.id)}
                           title={`${task.task_name} (클릭하여 상세 편집)`}
                         >
@@ -551,8 +554,7 @@ export function MemberTasksView() {
                               <button
                                 onClick={toggleCollapse}
                                 className={cn(
-                                  'h-6 px-1.5 rounded border inline-flex items-center gap-0.5 text-[10px] font-semibold transition-colors shadow-sm',
-                                  toggleTone
+                                  'h-6 px-1.5 rounded border border-border/60 bg-background/80 hover:bg-accent/40 inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground transition-colors'
                                 )}
                                 title={isCollapsed ? '세부항목 펼치기' : '세부항목 접기'}
                               >
