@@ -74,6 +74,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   const [actualEnd, setActualEnd] = useState('')
   const [totalWorkload, setTotalWorkload] = useState('')
   const [actualProgress, setActualProgress] = useState('')
+  const [useActualOverride, setUseActualOverride] = useState(false)
   const [remarks, setRemarks] = useState('')
   const [calendarType, setCalendarType] = useState('STD')
   const [isMilestone, setIsMilestone] = useState(false)
@@ -96,7 +97,10 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
       setActualStart(task.actual_start || '')
       setActualEnd(task.actual_end || '')
       setTotalWorkload(task.total_workload?.toString() || '')
-      setActualProgress((task.actual_progress * 100).toString())
+      const hasActualOverride = task.actual_progress_override != null
+      setUseActualOverride(hasActualOverride)
+      const progressValue = hasActualOverride ? (task.actual_progress_override ?? 0) : task.actual_progress
+      setActualProgress((progressValue * 100).toString())
       setRemarks(task.remarks || '')
       setCalendarType(task.calendar_type || 'STD')
       setIsMilestone(task.is_milestone || false)
@@ -177,9 +181,18 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
     if (!hasDetails) {
       changes.total_workload = totalWorkload ? parseFloat(totalWorkload) : undefined
     }
-    // 실적 진척률은 수동 입력 시 override로 저장됨 (task-store에서 처리)
+    // 실적 진척률: 세부항목이 있으면 자동 기본, 필요 시 PM이 수동 override
     if (!isGroup) {
-      changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+      if (hasDetails) {
+        if (useActualOverride) {
+          changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+        } else {
+          changes.actual_progress_override = undefined
+          changes.actual_progress = ((detailProgress ?? 0) / 100)
+        }
+      } else {
+        changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+      }
     }
     updateTask(taskId, changes)
     onClose()
@@ -281,9 +294,28 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                       <Input type="number" step="0.1" value={hasDetails ? currentDetails.length : totalWorkload} onChange={(e) => setTotalWorkload(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
                       {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
                     </Field>
-                    <Field label={hasDetails ? '진척률 (%) 자동+수동' : '진척률 (%)'}>
-                      <Input type="number" min="0" max="100" value={hasDetails ? (actualProgress || String(detailProgress ?? 0)) : actualProgress} onChange={(e) => setActualProgress(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/20")} disabled={isGroup} />
-                      {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 자동값을 PM이 수동으로 덮어쓸 수 있습니다.</span>}
+                    <Field label="진척률 (%)">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={hasDetails ? (useActualOverride ? actualProgress : String(detailProgress ?? 0)) : actualProgress}
+                        onChange={(e) => setActualProgress(e.target.value)}
+                        className={cn(fieldCls, hasDetails && !useActualOverride && "bg-muted/60 text-muted-foreground")}
+                        disabled={isGroup || (hasDetails && !useActualOverride)}
+                      />
+                      {hasDetails && (
+                        <label className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+                          <input
+                            type="checkbox"
+                            checked={useActualOverride}
+                            onChange={(e) => setUseActualOverride(e.target.checked)}
+                            className="w-3 h-3 rounded accent-primary"
+                            disabled={isGroup}
+                          />
+                          PM 수동값 사용 (해제하면 세부항목 자동 계산)
+                        </label>
+                      )}
                     </Field>
                     <Field label="비고">
                       <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="h-7 text-xs" placeholder="메모" />

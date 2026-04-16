@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { ChevronRight, GripVertical, CheckCircle2 } from 'lucide-react'
+import { ChevronRight, GripVertical } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { ROW_HEIGHT } from '@/lib/types'
 import { useTaskStore } from '@/stores/task-store'
@@ -188,34 +188,25 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
         <div
           key={col.id}
           style={{ width: col.width, minWidth: col.width }}
-          className="flex items-center justify-center px-2 border-r gap-1"
+          className="flex items-center justify-center px-2 border-r gap-1.5"
         >
           {task.actual_progress_override != null && (
-            <span className="text-[10px] text-amber-600 font-medium whitespace-nowrap">🔒 수동</span>
+            <span className="text-[11px] text-amber-600 leading-none" title="수동 진척률">🔒</span>
           )}
-          {task.actual_progress >= 1 ? (
-            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
-              <CheckCircle2 className="h-3 w-3" />
-              <span className="text-[10px] font-bold">완료</span>
-            </span>
-          ) : pct === 0 ? (
-            <span className="text-[10px] text-muted-foreground/40">—</span>
-          ) : (
-            <div className="flex items-center gap-1.5 w-full">
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${pct}%`,
-                    backgroundColor: pct >= 75 ? '#2563eb' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f59e0b' : '#f97316',
-                  }}
-                />
-              </div>
-              <span className="text-[10px] font-bold tabular-nums text-foreground/70 w-7 text-right">
-                {pct}%
-              </span>
+          <div className="flex items-center gap-1.5 w-full">
+            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: pct >= 75 ? '#2563eb' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f59e0b' : '#f97316',
+                }}
+              />
             </div>
-          )}
+            <span className="text-[10px] font-bold tabular-nums text-foreground/70 w-8 text-right">
+              {pct}%
+            </span>
+          </div>
         </div>
       )
     }
@@ -227,34 +218,25 @@ export function TaskRow({ task, rowIndex, columns, onDoubleClick, onContextMenu,
         <div
           key={col.id}
           style={{ width: col.width, minWidth: col.width }}
-          className="flex items-center justify-center px-2 border-r gap-1"
+          className="flex items-center justify-center px-2 border-r gap-1.5"
         >
           {task.planned_progress_override != null && (
-            <span className="text-[10px] text-violet-600 font-medium whitespace-nowrap">🔒 수동</span>
+            <span className="text-[11px] text-violet-600 leading-none" title="수동 계획진척률">🔒</span>
           )}
-          {task.planned_progress >= 1 ? (
-            <span className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full border border-violet-200">
-              <CheckCircle2 className="h-3 w-3" />
-              <span className="text-[10px] font-bold">완료</span>
-            </span>
-          ) : pct === 0 ? (
-            <span className="text-[10px] text-muted-foreground/40">—</span>
-          ) : (
-            <div className="flex items-center gap-1.5 w-full">
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${pct}%`,
-                    backgroundColor: '#8b5cf6',
-                  }}
-                />
-              </div>
-              <span className="text-[10px] font-bold tabular-nums text-foreground/70 w-7 text-right">
-                {pct}%
-              </span>
+          <div className="flex items-center gap-1.5 w-full">
+            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: '#8b5cf6',
+                }}
+              />
             </div>
-          )}
+            <span className="text-[10px] font-bold tabular-nums text-foreground/70 w-8 text-right">
+              {pct}%
+            </span>
+          </div>
         </div>
       )
     }

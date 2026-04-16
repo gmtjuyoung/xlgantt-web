@@ -412,10 +412,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   updateTask: (taskId, changes) => {
     const normalizedChanges: Partial<Task> = { ...changes }
-    if (changes.planned_progress !== undefined && changes.planned_progress_override === undefined) {
+    const hasPlannedOverrideField = Object.prototype.hasOwnProperty.call(changes, 'planned_progress_override')
+    const hasActualOverrideField = Object.prototype.hasOwnProperty.call(changes, 'actual_progress_override')
+
+    if (changes.planned_progress !== undefined && !hasPlannedOverrideField) {
       normalizedChanges.planned_progress_override = clampProgress(changes.planned_progress)
     }
-    if (changes.actual_progress !== undefined && changes.actual_progress_override === undefined) {
+    if (changes.actual_progress !== undefined && !hasActualOverrideField) {
       normalizedChanges.actual_progress_override = clampProgress(changes.actual_progress)
     }
 
