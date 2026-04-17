@@ -65,7 +65,7 @@ export function ProgressDashboard() {
     <div className="flex h-full flex-col overflow-hidden bg-[linear-gradient(to_bottom,oklch(0.985_0.004_250)_0%,oklch(0.972_0.006_250)_100%)]">
       {/* Header */}
       <div className="flex-none px-6 pt-5 pb-0">
-        <div className="mx-auto w-full max-w-screen-2xl">
+        <div className="mx-auto w-full max-w-[1560px]">
           <div className="overflow-hidden rounded-[28px] border border-[oklch(0.84_0.014_250)] bg-[oklch(0.992_0.003_250)] shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
             <div className="grid gap-5 border-b border-[oklch(0.9_0.01_250)] px-6 py-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:px-8">
               <div className="space-y-3">
@@ -122,7 +122,7 @@ export function ProgressDashboard() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-6 p-6">
+        <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-6 p-6">
         {activeTab === 'overview' && <OverviewTab metrics={metrics} />}
         {activeTab === 'timeline' && (
           <TimelineTab
@@ -364,9 +364,9 @@ function OverviewTab({ metrics }: { metrics: ProjectMetrics }) {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
         <section className="overflow-hidden rounded-[26px] border border-[oklch(0.85_0.014_250)] bg-white shadow-[0_20px_40px_rgba(15,23,42,0.06)]">
-          <div className="grid gap-5 px-6 py-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-7">
+          <div className="grid gap-5 px-6 py-6 lg:grid-cols-[196px_minmax(0,1fr)] lg:px-7">
             <div className="flex flex-col items-center justify-center rounded-[22px] bg-[oklch(0.972_0.006_250)] p-5">
               <RingGauge planned={plannedPct} actual={actualPct} size={132} />
               <div className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">Progress Signal</div>
@@ -396,7 +396,7 @@ function OverviewTab({ metrics }: { metrics: ProjectMetrics }) {
           </div>
         </section>
 
-        <section className="grid gap-4">
+        <section className="grid gap-4 xl:grid-rows-2">
           <KpiCard
             label="일정 성과"
             sublabel="실적 / 계획 비율"
@@ -476,7 +476,7 @@ function KpiCard({ label, sublabel, value, status, desc }: {
 /* ─── 미니 카드 ─── */
 function MiniCard({ label, value, unit, icon }: { label: string; value: string; unit: string; icon: string }) {
   return (
-    <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-4 rounded-[22px] border border-[oklch(0.88_0.012_250)] bg-white px-4 py-4">
+    <div className="grid min-h-[92px] grid-cols-[56px_minmax(0,1fr)] items-center gap-4 rounded-[22px] border border-[oklch(0.88_0.012_250)] bg-white px-4 py-4">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[oklch(0.972_0.006_250)] text-xs font-black tracking-[0.14em] text-[oklch(0.36_0.02_250)]">
         {icon}
       </div>
@@ -519,9 +519,9 @@ function MonthlyTab({
   )
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* S-Curve */}
-      <Card title="월별 S-Curve (누적 진척률)">
+      <Card title="월별 S-Curve (누적 진척률)" className="min-h-[420px]">
         <ResponsiveContainer width="100%" height={340}>
           <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -537,7 +537,7 @@ function MonthlyTab({
       </Card>
 
       {/* Monthly bar chart */}
-      <Card title="월별 작업량 비교">
+      <Card title="월별 작업량 비교" className="min-h-[420px]">
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -552,7 +552,7 @@ function MonthlyTab({
       </Card>
 
       {/* Table */}
-      <Card title="월별 진척 상세">
+      <Card title="월별 진척 상세" className="min-h-[420px]">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -632,9 +632,9 @@ function WeeklyTab({
   const displayChart = chartData.length > 30 ? chartData.slice(-26) : chartData
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* S-Curve */}
-      <Card title="주별 S-Curve (누적 진척률)">
+      <Card title="주별 S-Curve (누적 진척률)" className="min-h-[420px]">
         <ResponsiveContainer width="100%" height={340}>
           <LineChart data={displayChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -649,7 +649,7 @@ function WeeklyTab({
       </Card>
 
       {/* Table */}
-      <Card title={`주별 진척 상세 (${weeklyData.length}주)`}>
+      <Card title={`주별 진척 상세 (${weeklyData.length}주)`} className="min-h-[420px]">
         <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
@@ -724,9 +724,9 @@ function ResourceTab({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Bar chart */}
-      <Card title="담당자별 진척률">
+      <Card title="담당자별 진척률" className="min-h-[304px]">
         <ResponsiveContainer width="100%" height={Math.max(200, resourceData.length * 40 + 60)}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -744,7 +744,7 @@ function ResourceTab({
       </Card>
 
       {/* Table */}
-      <Card title="담당자별 상세">
+      <Card title="담당자별 상세" className="min-h-[304px]">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -820,8 +820,8 @@ function TaskTab({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <Card title="업무별 계획 vs 실적">
+    <div className="space-y-6 w-full">
+      <Card title="업무별 계획 vs 실적" className="min-h-[304px]">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
@@ -954,8 +954,8 @@ function DailyTab({
   const displayChart = chartData.length > 40 ? chartData.slice(-40) : chartData
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <Card title="일자별 누적 진척률">
+    <div className="space-y-6 w-full">
+      <Card title="일자별 누적 진척률" className="min-h-[404px]">
         <ResponsiveContainer width="100%" height={320}>
           <LineChart data={displayChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -969,7 +969,7 @@ function DailyTab({
         </ResponsiveContainer>
       </Card>
 
-      <Card title={`일자별 상세 (${dailyData.length}일)`}>
+      <Card title={`일자별 상세 (${dailyData.length}일)`} className="min-h-[404px]">
         <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
@@ -1031,9 +1031,9 @@ function CompanyTab({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Bar chart */}
-      <Card title="회사별 진척률">
+      <Card title="회사별 진척률" className="min-h-[304px]">
         <ResponsiveContainer width="100%" height={Math.max(180, companyData.length * 50 + 60)}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 90, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -1050,7 +1050,7 @@ function CompanyTab({
       </Card>
 
       {/* Table */}
-      <Card title="회사별 상세">
+      <Card title="회사별 상세" className="min-h-[304px]">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -1116,7 +1116,7 @@ function WBSGroupTab({ tasks, statusDate }: { tasks: Parameters<typeof calcProgr
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Grouped bar chart */}
-      <Card title="WBS 그룹별 계획 vs 실적">
+      <Card title="WBS 그룹별 계획 vs 실적" className="min-h-[304px]">
         <ResponsiveContainer width="100%" height={Math.max(200, wbsData.length * 50 + 60)}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -1131,7 +1131,7 @@ function WBSGroupTab({ tasks, statusDate }: { tasks: Parameters<typeof calcProgr
       </Card>
 
       {/* Table */}
-      <Card title="WBS 그룹별 상세">
+      <Card title="WBS 그룹별 상세" className="min-h-[304px]">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -1188,9 +1188,17 @@ const tooltipStyle = {
   background: 'oklch(0.995 0.002 250)',
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  children,
+  className,
+}: {
+  title: string
+  children: React.ReactNode
+  className?: string
+}) {
   return (
-    <div className="overflow-hidden rounded-[24px] border border-[oklch(0.88_0.012_250)] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+    <div className={cn("overflow-hidden rounded-[24px] border border-[oklch(0.88_0.012_250)] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]", className)}>
       <div className="border-b border-[oklch(0.91_0.01_250)] bg-[oklch(0.983_0.004_250)] px-5 py-4">
         <h3 className="text-sm font-semibold tracking-[-0.02em] text-[oklch(0.24_0.02_250)]">{title}</h3>
       </div>
