@@ -6,6 +6,14 @@ import { useProjectStore } from '@/stores/project-store'
 import { useTaskStore } from '@/stores/task-store'
 import { supabase } from '@/lib/supabase'
 
+let hasShownAssignmentProgressMigrationAlert = false
+
+function notifyAssignmentSaveFailure(message: string) {
+  if (typeof window !== 'undefined') {
+    window.alert(message)
+  }
+}
+
 function logActivity(params: {
   action: 'create' | 'update' | 'delete' | 'complete' | 'status_change'
   targetType: 'task' | 'detail' | 'assignment' | 'dependency'
@@ -57,6 +65,7 @@ function dbToAssignment(row: Record<string, unknown>): TaskAssignment {
     task_id: row.task_id as string,
     member_id: row.member_id as string,
     allocation_percent: (row.allocation_percent as number) ?? 100,
+    progress_percent: (row.progress_percent as number) ?? 0,
   }
 }
 
@@ -133,16 +142,69 @@ interface ResourceState {
 function syncTaskProgress(taskId: string, taskDetails: TaskDetail[]) {
   const details = taskDetails.filter((d) => d.task_id === taskId)
   if (details.length === 0) return // 세부항목 없으면 수동 모드 유지
+  const task = useTaskStore.getState().tasks.find((t) => t.id === taskId)
+  if (!task) return
 
   const doneCount = details.filter((d) => d.status === 'done').length
-  const progress = doneCount / details.length
+  const detailProgress = doneCount / details.length
   const workload = details.length // 1 세부항목 = 1 M/D
 
+  // 담당자 진척률이 하나라도 0% 초과로 입력된 경우에만 담당자값을 우선 적용.
+  // (기본값 0%로 생성된 담당자 배정이 세부항목 자동 100%를 덮어쓰지 않도록)
+  const assignments = useResourceStore.getState().assignments.filter((a) => a.task_id === taskId)
+  const hasMeaningfulAssignmentProgress = assignments.some((a) => (a.progress_percent || 0) > 0)
+  let progress = detailProgress
+  if (hasMeaningfulAssignmentProgress) {
+    const totalAllocation = assignments.reduce((sum, a) => sum + Math.max(0, a.allocation_percent || 0), 0)
+    const totalWeight = totalAllocation > 0 ? totalAllocation : assignments.length
+    if (totalWeight > 0) {
+      progress = assignments.reduce((sum, a) => {
+        const weight = totalAllocation > 0 ? Math.max(0, a.allocation_percent || 0) : 1
+        const memberProgress = Math.max(0, Math.min(100, a.progress_percent || 0)) / 100
+        return sum + (memberProgress * weight)
+      }, 0) / totalWeight
+    }
+  }
+
   // undo 스냅샷 없이 자동 업데이트
-  useTaskStore.getState()._updateTaskSilent(taskId, {
-    actual_progress: progress,
-    total_workload: workload,
-  })
+  useTaskStore.getState()._updateTaskSilent(
+    taskId,
+    task.actual_progress_override != null
+      ? { total_workload: workload }
+      : { actual_progress: progress, total_workload: workload }
+  )
+}
+
+/** 담당자별 진척률 기반 자동 계산 (담당자 지정 시 우선 소스) */
+function syncTaskProgressFromAssignments(taskId: string, assignments: TaskAssignment[]) {
+  const task = useTaskStore.getState().tasks.find((t) => t.id === taskId)
+  if (!task || task.actual_progress_override != null) return
+
+  const taskAssigns = assignments.filter((a) => a.task_id === taskId)
+  if (taskAssigns.length === 0) return
+
+  const details = useResourceStore.getState().taskDetails.filter((d) => d.task_id === taskId)
+  const hasDetails = details.length > 0
+
+  const totalAllocation = taskAssigns.reduce((sum, a) => sum + Math.max(0, a.allocation_percent || 0), 0)
+  const totalWeight = totalAllocation > 0 ? totalAllocation : taskAssigns.length
+  if (totalWeight <= 0) return
+
+  const assignmentProgress = taskAssigns.reduce((sum, a) => {
+    const weight = totalAllocation > 0 ? Math.max(0, a.allocation_percent || 0) : 1
+    const memberProgress = Math.max(0, Math.min(100, a.progress_percent || 0)) / 100
+    return sum + (memberProgress * weight)
+  }, 0) / totalWeight
+
+  let progress = assignmentProgress
+  if (hasDetails) {
+    const doneCount = details.filter((d) => d.status === 'done').length
+    const detailProgress = doneCount / details.length
+    const hasMeaningfulAssignmentProgress = taskAssigns.some((a) => (a.progress_percent || 0) > 0)
+    progress = hasMeaningfulAssignmentProgress ? assignmentProgress : detailProgress
+  }
+
+  useTaskStore.getState()._updateTaskSilent(taskId, { actual_progress: progress })
 }
 
 // 샘플 데이터 제거 - DB가 단일 진실 소스
@@ -222,7 +284,15 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
       set({ taskDetails: [] })
     }
 
-    // 세부항목이 있는 작업들의 진척률/작업량 자동 동기화
+    // 담당자 진척률 우선 동기화
+    if (taskData && taskData.length > 0) {
+      const allTaskIds = taskData.map((t: Record<string, unknown>) => t.id as string)
+      for (const tid of allTaskIds) {
+        syncTaskProgressFromAssignments(tid, get().assignments)
+      }
+    }
+
+    // 담당자가 없는 작업은 세부항목 기반으로 동기화
     const allDetails = get().taskDetails
     const taskIdsWithDetails = [...new Set(allDetails.map((d) => d.task_id))]
     for (const tid of taskIdsWithDetails) {
@@ -322,11 +392,15 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
       task_id: assignment.task_id,
       member_id: assignment.member_id,
       allocation_percent: assignment.allocation_percent,
+      progress_percent: assignment.progress_percent ?? 0,
     }).then(({ error }) => {
       if (error) console.error('배정 추가 실패:', error.message)
     })
+    syncTaskProgressFromAssignments(assignment.task_id, get().assignments)
   },
   updateAssignment: (id, changes) => {
+    const before = get().assignments.find((a) => a.id === id)
+    if (!before) return
     set((s) => ({
       assignments: s.assignments.map((a) => a.id === id ? { ...a, ...changes } : a),
     }))
@@ -335,16 +409,52 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
       dbChanges[key] = value ?? null
     }
     if (Object.keys(dbChanges).length > 0) {
-      supabase.from('task_assignments').update(dbChanges).eq('id', id).then(({ error }) => {
-        if (error) console.error('배정 업데이트 실패:', error.message)
+      supabase
+        .from('task_assignments')
+        .update(dbChanges)
+        .eq('id', id)
+        .select('id')
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('배정 업데이트 실패:', error.message)
+            // optimistic update 롤백
+            set((s) => ({
+              assignments: s.assignments.map((a) => a.id === id ? before : a),
+            }))
+            const lower = error.message.toLowerCase()
+            if (lower.includes('progress_percent') && lower.includes('column') && !hasShownAssignmentProgressMigrationAlert) {
+              hasShownAssignmentProgressMigrationAlert = true
+              notifyAssignmentSaveFailure('담당자 진척률 저장에 필요한 DB 컬럼(progress_percent)이 없습니다. Supabase migration 008 적용이 필요합니다.')
+            } else {
+              notifyAssignmentSaveFailure('담당자 값 저장에 실패했습니다. 권한 또는 DB 설정을 확인해주세요.')
+            }
+            return
+          }
+          if (!data || data.length === 0) {
+            console.error('배정 업데이트 누락: 대상 행이 없거나 권한(RLS)으로 차단됨', { id, dbChanges })
+            // optimistic update 롤백
+            set((s) => ({
+              assignments: s.assignments.map((a) => a.id === id ? before : a),
+            }))
+            notifyAssignmentSaveFailure('담당자 값 저장이 거부되었습니다(RLS/권한). 프로젝트 권한과 DB 정책을 확인해주세요.')
+          }
       })
+    }
+    const updated = get().assignments.find((a) => a.id === id)
+    const taskId = updated?.task_id || before?.task_id
+    if (taskId) {
+      syncTaskProgressFromAssignments(taskId, get().assignments)
     }
   },
   removeAssignment: (id) => {
+    const before = get().assignments.find((a) => a.id === id)
     set((s) => ({ assignments: s.assignments.filter((a) => a.id !== id) }))
     supabase.from('task_assignments').delete().eq('id', id).then(({ error }) => {
       if (error) console.error('배정 삭제 실패:', error.message)
     })
+    if (before?.task_id) {
+      syncTaskProgressFromAssignments(before.task_id, get().assignments)
+    }
   },
   getTaskAssignments: (taskId) => get().assignments.filter((a) => a.task_id === taskId),
 
@@ -384,6 +494,7 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
             task_id: detail.task_id,
             member_id: memberId,
             allocation_percent: 100,
+            progress_percent: 0,
           })
         }
       }
@@ -454,6 +565,7 @@ export const useResourceStore = create<ResourceState>()((set, get) => ({
             task_id: before.task_id,
             member_id: memberId,
             allocation_percent: 100,
+            progress_percent: 0,
           })
         }
       }

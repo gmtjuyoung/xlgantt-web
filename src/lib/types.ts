@@ -7,6 +7,7 @@ export interface Project {
   id: string
   name: string
   description?: string
+  category?: string
   start_date: string // ISO date
   end_date: string
   owner_id: string
@@ -58,6 +59,8 @@ export interface Task {
   // Progress (0-1)
   planned_progress: number // Col AD
   actual_progress: number  // Col AE
+  planned_progress_override?: number
+  actual_progress_override?: number
 
   // Milestone (derived)
   is_milestone: boolean
@@ -141,10 +144,10 @@ export type DependencyType = 1 | 2 | 3 | 4
 // 4 = SF (Start-to-Finish)
 
 export const DEP_TYPE_LABELS: Record<DependencyType, string> = {
-  1: 'FS',
-  2: 'SS',
-  3: 'FF',
-  4: 'SF',
+  1: '종료→시작',
+  2: '시작→시작',
+  3: '종료→종료',
+  4: '시작→종료',
 }
 
 export type CalendarType = 'STD' | 'UD1' | 'UD2'

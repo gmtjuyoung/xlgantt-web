@@ -6,6 +6,7 @@ import { SignupPage } from '@/pages/SignupPage'
 import { ProjectDashboard } from '@/pages/ProjectDashboard'
 import { AdminPage } from '@/pages/AdminPage'
 import { ProfilePage } from '@/pages/ProfilePage'
+import { ForcePasswordChangePage } from '@/pages/ForcePasswordChangePage'
 import { useAuthStore } from '@/stores/auth-store'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,14 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     )
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function PasswordFreshGuard({ children }: { children: React.ReactNode }) {
+  const currentUser = useAuthStore((s) => s.currentUser)
+  if (currentUser?.force_password_change) {
+    return <Navigate to="/force-password-change" replace />
+  }
   return <>{children}</>
 }
 
@@ -42,10 +51,11 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
-      <Route path="/projects" element={<AuthGuard><ProjectDashboard /></AuthGuard>} />
-      <Route path="/projects/:projectId" element={<AuthGuard><ProjectWorkspace /></AuthGuard>} />
-      <Route path="/admin" element={<AuthGuard><AdminGuard><AdminPage /></AdminGuard></AuthGuard>} />
-      <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
+      <Route path="/force-password-change" element={<AuthGuard><ForcePasswordChangePage /></AuthGuard>} />
+      <Route path="/projects" element={<AuthGuard><PasswordFreshGuard><ProjectDashboard /></PasswordFreshGuard></AuthGuard>} />
+      <Route path="/projects/:projectId" element={<AuthGuard><PasswordFreshGuard><ProjectWorkspace /></PasswordFreshGuard></AuthGuard>} />
+      <Route path="/admin" element={<AuthGuard><PasswordFreshGuard><AdminGuard><AdminPage /></AdminGuard></PasswordFreshGuard></AuthGuard>} />
+      <Route path="/profile" element={<AuthGuard><PasswordFreshGuard><ProfilePage /></PasswordFreshGuard></AuthGuard>} />
       <Route path="/" element={<Navigate to="/projects" replace />} />
     </Routes>
   )

@@ -74,29 +74,47 @@ export function getAllDescendants(tasks: Task[], parentWbsCode: string): Task[] 
 }
 
 /**
+ * Find the correct indent parent for a task.
+ * Rule: use the nearest previous task at the same current level,
+ * not simply the immediately previous visible row.
+ */
+export function findIndentParent(tasks: Task[], taskId: string): Task | null {
+  const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
+  const index = sorted.findIndex((t) => t.id === taskId)
+  if (index <= 0) return null
+
+  const task = sorted[index]
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (sorted[i].wbs_level === task.wbs_level) {
+      return sorted[i]
+    }
+  }
+
+  return null
+}
+
+/**
  * Indent a task: increase its level by 1, making it a child of the previous sibling.
  */
 export function indentTask(tasks: Task[], taskId: string): Task[] {
   const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
-  const index = sorted.findIndex((t) => t.id === taskId)
-  if (index <= 0) return tasks // Can't indent the first task
+  const task = sorted.find((t) => t.id === taskId)
+  if (!task) return tasks
+  const parentTask = findIndentParent(sorted, taskId)
+  if (!parentTask) return tasks
 
-  const task = sorted[index]
-  const prevTask = sorted[index - 1]
-
-  // The previous task becomes the parent
   if (task.wbs_level >= 10) return tasks // Max 10 levels
 
   const newLevel = task.wbs_level + 1
-  const childCount = getDirectChildren(sorted, prevTask.id).length
+  const childCount = getDirectChildren(sorted, parentTask.id).length
 
   return sorted.map((t) => {
     if (t.id === taskId) {
       return {
         ...t,
         wbs_level: newLevel,
-        parent_id: prevTask.id,
-        wbs_code: generateWBSCode(prevTask.wbs_code, childCount + 1),
+        parent_id: parentTask.id,
+        wbs_code: generateWBSCode(parentTask.wbs_code, childCount + 1),
       }
     }
     return t

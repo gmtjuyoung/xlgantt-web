@@ -14,9 +14,12 @@ import { useProjectStore } from '@/stores/project-store'
 import {
   generateMonthlyProgress,
   generateWeeklyProgress,
+  generateDailyProgress,
   type MonthlyProgress,
   type WeeklyProgress,
+  type DailyProgress,
 } from '@/lib/progress-calc'
+import { useResourceStore } from '@/stores/resource-store'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -24,7 +27,7 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { Download, Printer, RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
 
-type AnalysisTab = 'monthly' | 'weekly'
+type AnalysisTab = 'monthly' | 'weekly' | 'daily'
 
 // ====================================================================
 // CSV Export utility
@@ -79,12 +82,29 @@ function buildWeeklyCSV(data: WeeklyProgress[]): string {
   return [header, ...rows].join('\n')
 }
 
+function buildDailyCSV(data: DailyProgress[]): string {
+  const header = '일자,일 계획량,누적 계획,계획률(%),일 EV,누적 EV,EV률(%)'
+  const rows = data.map((d) =>
+    [
+      d.date,
+      d.plannedWorkload,
+      d.cumulativePlanned,
+      (d.plannedRate * 100).toFixed(1),
+      d.earnedValue,
+      d.cumulativeEV,
+      (d.evRate * 100).toFixed(1),
+    ].join(',')
+  )
+  return [header, ...rows].join('\n')
+}
+
 // ====================================================================
 // Main Component
 // ====================================================================
 export function AnalysisReport() {
   const tasks = useTaskStore((s) => s.tasks)
   const project = useProjectStore((s) => s.currentProject)
+  const assignments = useResourceStore((s) => s.assignments)
   const printRef = useRef<HTMLDivElement>(null)
 
   // Tab state
@@ -97,13 +117,18 @@ export function AnalysisReport() {
   // ---- Raw data (full range) ----
   const allMonthlyData = useMemo(() => {
     if (!project) return []
-    return generateMonthlyProgress(tasks, project.start_date, project.end_date)
-  }, [tasks, project])
+    return generateMonthlyProgress(tasks, project.start_date, project.end_date, assignments)
+  }, [tasks, project, assignments])
 
   const allWeeklyData = useMemo(() => {
     if (!project) return []
-    return generateWeeklyProgress(tasks, project.start_date, project.end_date)
-  }, [tasks, project])
+    return generateWeeklyProgress(tasks, project.start_date, project.end_date, assignments)
+  }, [tasks, project, assignments])
+
+  const allDailyData = useMemo(() => {
+    if (!project) return []
+    return generateDailyProgress(tasks, project.start_date, project.end_date, assignments)
+  }, [tasks, project, assignments])
 
   // ---- Filtered data ----
   const monthlyData = useMemo(() => {
@@ -123,6 +148,15 @@ export function AnalysisReport() {
       return true
     })
   }, [allWeeklyData, filterStart, filterEnd])
+
+  const dailyData = useMemo(() => {
+    if (!filterStart && !filterEnd) return allDailyData
+    return allDailyData.filter((d) => {
+      if (filterStart && d.date < filterStart) return false
+      if (filterEnd && d.date > filterEnd) return false
+      return true
+    })
+  }, [allDailyData, filterStart, filterEnd])
 
   // ---- Chart data ----
   const monthlyChartData = useMemo(
@@ -146,18 +180,30 @@ export function AnalysisReport() {
     [weeklyData]
   )
 
+  const dailyChartData = useMemo(
+    () =>
+      dailyData.map((d) => ({
+        name: d.dateLabel,
+        '계획 진척률': Math.round(d.plannedRate * 10000) / 100,
+        'Earned Value': Math.round(d.evRate * 10000) / 100,
+      })),
+    [dailyData]
+  )
+
   // ---- CSV export ----
   const handleExportCSV = useCallback(() => {
     if (!project) return
     const today = format(new Date(), 'yyyyMMdd')
-    const tabLabel = activeTab === 'monthly' ? '월별' : '주별'
+    const tabLabel = activeTab === 'monthly' ? '월별' : activeTab === 'weekly' ? '주별' : '일자별'
     const filename = `${project.name}_분석_${tabLabel}_${today}.csv`
     const csv =
       activeTab === 'monthly'
         ? buildMonthlyCSV(monthlyData)
-        : buildWeeklyCSV(weeklyData)
+        : activeTab === 'weekly'
+          ? buildWeeklyCSV(weeklyData)
+          : buildDailyCSV(dailyData)
     downloadCSV(filename, csv)
-  }, [project, activeTab, monthlyData, weeklyData])
+  }, [project, activeTab, monthlyData, weeklyData, dailyData])
 
   // ---- Print ----
   const handlePrint = useCallback(() => {
@@ -224,6 +270,7 @@ export function AnalysisReport() {
         <TabsList className="mb-4 no-print">
           <TabsTrigger value="monthly">월별</TabsTrigger>
           <TabsTrigger value="weekly">주별</TabsTrigger>
+          <TabsTrigger value="daily">일자별</TabsTrigger>
         </TabsList>
 
         {/* ============ Monthly Tab ============ */}
@@ -458,6 +505,80 @@ export function AnalysisReport() {
                   {weeklyData.length === 0 && (
                     <tr>
                       <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                        선택한 기간에 데이터가 없습니다.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ============ Daily Tab ============ */}
+        <TabsContent value="daily">
+          <div className="bg-card rounded-xl border border-border/50 p-5 mb-6 shadow-sm">
+            <h3 className="text-sm font-semibold mb-4">S-Curve &mdash; 일자별 누적 진척률</h3>
+            <ResponsiveContainer width="100%" height={360}>
+              <LineChart data={dailyChartData.length > 60 ? dailyChartData.slice(-60) : dailyChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
+                <XAxis
+                  dataKey="name"
+                  fontSize={11}
+                  tick={{ fill: 'oklch(0.5 0.02 250)' }}
+                  interval={dailyChartData.length > 40 ? Math.floor(dailyChartData.length / 20) : 0}
+                />
+                <YAxis fontSize={11} tickFormatter={(v: number) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'oklch(0.5 0.02 250)' }} />
+                <Tooltip formatter={(value) => `${value}%`} contentStyle={{ borderRadius: '8px', border: '1px solid oklch(0.91 0.01 250)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: '12px' }} />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
+                <Line type="monotone" dataKey="계획 진척률" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="Earned Value" stroke="#22c55e" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border/50 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-border/40">
+              <h3 className="text-sm font-semibold">일자별 진척 상세</h3>
+            </div>
+            <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <th className="px-4 py-2.5 text-left font-semibold">일자</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">일 계획량</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">누적 계획률</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">일 EV</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">누적 EV률</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyData.map((d, index) => (
+                    <tr
+                      key={d.date}
+                      className={cn(
+                        'border-b border-border/20 hover:bg-accent/30 transition-colors',
+                        index % 2 === 1 && 'bg-muted/10'
+                      )}
+                    >
+                      <td className="px-4 py-2.5 font-mono text-xs">{d.date}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs">{d.plannedWorkload.toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-medium">
+                          {(d.plannedRate * 100).toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs">{d.earnedValue.toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-medium">
+                          {(d.evRate * 100).toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {dailyData.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">
                         선택한 기간에 데이터가 없습니다.
                       </td>
                     </tr>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Search, Users, ClipboardList, ExternalLink, UserCheck, List, LayoutGrid, ChevronDown, ChevronRight, Clock, ArrowUpDown } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { useResourceStore } from '@/stores/resource-store'
@@ -22,20 +22,22 @@ interface MemberTaskInfo {
   details: TaskDetail[]
 }
 
+const MEMBER_TASKS_VIEW_MODE_KEY = 'xlgantt:memberTasks:detailViewMode'
+
 // ============================================================
 // Status badge component
 // ============================================================
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  todo: { label: '대기', bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400' },
-  in_progress: { label: '진행', bg: 'bg-blue-50 dark:bg-blue-950', text: 'text-blue-600 dark:text-blue-400' },
-  done: { label: '완료', bg: 'bg-green-50 dark:bg-green-950', text: 'text-green-600 dark:text-green-400' },
+const STATUS_CONFIG: Record<string, { label: string; tone: string }> = {
+  todo: { label: '대기', tone: 'mtv-status-badge--todo' },
+  in_progress: { label: '진행', tone: 'mtv-status-badge--progress' },
+  done: { label: '완료', tone: 'mtv-status-badge--done' },
 }
 
 function StatusBadge({ status }: { status: string }) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.todo
   return (
-    <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium', config.bg, config.text)}>
+    <span className={cn('mtv-status-badge', config.tone)}>
       {config.label}
     </span>
   )
@@ -77,12 +79,21 @@ export function MemberTasksView() {
   const [editTaskId, setEditTaskId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [hideDone, setHideDone] = useState(false)
-  const [detailViewMode, setDetailViewMode] = useState<'list' | 'card'>('list')
+  const [detailViewMode, setDetailViewMode] = useState<'list' | 'card'>(() => {
+    if (typeof window === 'undefined') return 'list'
+    const saved = window.localStorage.getItem(MEMBER_TASKS_VIEW_MODE_KEY)
+    return saved === 'card' || saved === 'list' ? saved : 'list'
+  })
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
   const [cardDetailId, setCardDetailId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<'wbs' | 'name' | 'allocation' | 'date' | 'progress'>('wbs')
   const [sortAsc, setSortAsc] = useState(true)
   const [taskSearchQuery, setTaskSearchQuery] = useState('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(MEMBER_TASKS_VIEW_MODE_KEY, detailViewMode)
+  }, [detailViewMode])
 
   const handleOpenTask = useCallback((taskId: string) => {
     setEditTaskId(taskId)
@@ -226,7 +237,7 @@ export function MemberTasksView() {
       const task = tasks.find((t) => t.id === taskId && !t.is_group)
       if (!task) continue
       if (hideDone && task.actual_progress >= 1) continue
-      const assign = memberAssigns.find((a) => a.task_id === taskId) || { id: '', task_id: taskId, member_id: selectedMemberId, allocation_percent: 100 }
+      const assign = memberAssigns.find((a) => a.task_id === taskId) || { id: '', task_id: taskId, member_id: selectedMemberId, allocation_percent: 100, progress_percent: 0 }
       const dets = taskDetails.filter((d) => d.task_id === task.id).sort((a, b) => a.sort_order - b.sort_order)
       result.push({ task, assignment: assign, details: hideDone ? dets.filter((d) => d.status !== 'done') : dets })
     }
@@ -260,9 +271,9 @@ export function MemberTasksView() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ===== Left Panel: Member List ===== */}
-      <div className="w-[320px] flex-shrink-0 border-r border-border/40 flex flex-col bg-background">
+      <div className="member-panel">
         {/* Summary */}
-        <div className="px-4 py-3 border-b border-border/40 bg-muted/20">
+        <div className="member-panel-head">
           <div className="flex items-center gap-2 mb-2">
             <UserCheck className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-bold text-foreground">담당자별 업무</h2>
@@ -284,7 +295,7 @@ export function MemberTasksView() {
         </div>
 
         {/* Search */}
-        <div className="px-3 py-2 border-b border-border/30">
+        <div className="member-panel-search">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
             <Input
@@ -306,7 +317,7 @@ export function MemberTasksView() {
           {filteredCompanies.map(({ company, members: companyMembers }) => (
             <div key={company.id}>
               {/* Company header */}
-              <div className="px-3 py-1.5 bg-muted/40 text-[11px] font-semibold flex items-center gap-1.5 sticky top-0 z-10">
+              <div className="member-company-head">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: company.color }} />
                 <span className="truncate">{company.name}</span>
                 <span className="text-muted-foreground/60 font-normal">({companyMembers.length})</span>
@@ -323,13 +334,16 @@ export function MemberTasksView() {
                 return (
                   <div
                     key={member.id}
-                    className={cn(
-                      'px-3 py-2 cursor-pointer transition-all border-l-2',
-                      isSelected
-                        ? 'bg-primary/5 border-l-primary'
-                        : 'border-l-transparent hover:bg-accent/40'
-                    )}
+                    className={cn('member-item', isSelected ? 'member-item--active' : 'member-item--idle')}
                     onClick={() => setSelectedMemberId(member.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedMemberId(member.id)
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-2">
                       {/* Avatar */}
@@ -392,7 +406,7 @@ export function MemberTasksView() {
       </div>
 
       {/* ===== Right Panel: Task List ===== */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
         {!selectedMember ? (
           /* Empty state */
           <div className="flex-1 flex items-center justify-center">
@@ -403,9 +417,9 @@ export function MemberTasksView() {
             </div>
           </div>
         ) : (
-          <>
+          <div className="flex-1 flex flex-col min-w-0 px-4 py-3 md:px-6 xl:px-8">
             {/* Selected member header */}
-            <div className="px-5 py-3 border-b border-border/40 bg-muted/10 flex items-center gap-3">
+            <div className="rounded-t-2xl border border-slate-300 border-b-0 bg-white px-5 py-3 flex items-center gap-3">
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
                 style={{ backgroundColor: selectedMemberCompany?.color || '#888' }}
@@ -439,7 +453,7 @@ export function MemberTasksView() {
             </div>
 
             {/* 작업 검색 + 완료 숨기기 */}
-            <div className="px-4 py-2 border-b border-border/30 bg-muted/10 flex items-center gap-2">
+            <div className="border border-slate-300/90 border-t-0 bg-white px-4 py-2 flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
                 <Input
@@ -456,16 +470,16 @@ export function MemberTasksView() {
             </div>
 
             {/* Task list */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto rounded-b-2xl border border-slate-300 border-t-0 bg-white shadow-[0_18px_40px_-32px_rgba(15,23,42,0.35)]">
               {filteredMemberTasks.length === 0 ? (
                 <div className="px-5 py-8 text-center text-xs text-muted-foreground/50">
                   {taskSearchQuery ? '검색 결과가 없습니다' : '배정된 작업이 없습니다'}
                 </div>
               ) : (
-                <div>
+                <div className="border-t border-border/50">
                   {/* Table header with sort */}
-                  <div className="flex items-center px-5 py-2 bg-muted/20 border-b border-border/30 sticky top-0 z-10">
-                    <div className="grid grid-cols-[20px_70px_1fr_100px_60px_60px] gap-1 flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <div className="mtv-table-header">
+                    <div className="grid grid-cols-[34px_70px_1fr_132px_70px_70px] gap-1 flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       <span></span>
                       <span
                         className="cursor-pointer hover:text-foreground flex items-center gap-0.5 select-none"
@@ -480,7 +494,7 @@ export function MemberTasksView() {
                         작업명 {sortBy === 'name' && <ArrowUpDown className="h-2.5 w-2.5" />}
                       </span>
                       <span
-                        className="text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-0.5 select-none"
+                        className="text-center cursor-pointer hover:text-foreground flex items-center justify-center gap-0.5 select-none whitespace-nowrap"
                         onClick={() => { if (sortBy === 'date') setSortAsc(!sortAsc); else { setSortBy('date'); setSortAsc(true) } }}
                       >
                         기간 {sortBy === 'date' && <ArrowUpDown className="h-2.5 w-2.5" />}
@@ -501,14 +515,14 @@ export function MemberTasksView() {
                     <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                       <button
                         onClick={() => setDetailViewMode('list')}
-                        className={cn('p-1 rounded', detailViewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
+                        className={cn('p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40', detailViewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
                         title="리스트 보기"
                       >
                         <List className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setDetailViewMode('card')}
-                        className={cn('p-1 rounded', detailViewMode === 'card' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
+                        className={cn('p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40', detailViewMode === 'card' ? 'bg-primary/10 text-primary' : 'text-muted-foreground/40 hover:text-muted-foreground')}
                         title="카드 보기"
                       >
                         <LayoutGrid className="h-3.5 w-3.5" />
@@ -522,6 +536,12 @@ export function MemberTasksView() {
                     const endStr = task.planned_end ? format(new Date(task.planned_end), 'MM/dd') : '-'
                     const progressPct = Math.round((task.actual_progress || 0) * 100)
                     const isCollapsed = collapsedTasks.has(task.id)
+                    const rowTone =
+                      progressPct >= 100
+                        ? 'mtv-task-row--done'
+                        : progressPct > 0
+                          ? 'mtv-task-row--progress'
+                          : 'mtv-task-row--todo'
                     const toggleCollapse = (e: React.MouseEvent) => {
                       e.stopPropagation()
                       setCollapsedTasks((prev) => {
@@ -532,30 +552,48 @@ export function MemberTasksView() {
                     }
 
                     return (
-                      <div key={`${task.id}_${assignment.id}`}>
+                      <div key={`${task.id}_${assignment.id}`} className="mtv-task-block">
                         {/* Task row */}
                         <div
-                          className="grid grid-cols-[20px_70px_1fr_100px_60px_60px] gap-1 px-5 py-2 hover:bg-accent/30 cursor-pointer items-center group border-b border-border/20 transition-colors"
+                          className={cn(
+                            'mtv-task-row group',
+                            rowTone
+                          )}
                           onClick={() => handleOpenTask(task.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              handleOpenTask(task.id)
+                            }
+                          }}
                           title={`${task.task_name} (클릭하여 상세 편집)`}
                         >
                           {/* 접기 토글 */}
-                          <span className="flex-shrink-0">
+                          <span className="flex-shrink-0 flex items-center">
                             {details.length > 0 && (
-                              <button onClick={toggleCollapse} className="p-0.5 hover:bg-accent rounded">
-                                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                              <button
+                                onClick={toggleCollapse}
+                                className={cn(
+                                  'h-6 px-1.5 rounded border border-border/60 bg-background/80 hover:bg-accent/40 inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+                                )}
+                                title={isCollapsed ? '세부항목 펼치기' : '세부항목 접기'}
+                              >
+                                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                <span>{details.length}</span>
                               </button>
                             )}
                           </span>
-                          <span className="text-[10px] text-muted-foreground font-mono">
+                          <span className="mtv-row-wbs">
                             {task.wbs_code}
                           </span>
-                          <span className="text-xs truncate flex items-center gap-1">
+                          <span className="text-xs truncate flex items-center gap-1.5">
                             <span className="truncate">{task.task_name}</span>
-                            {details.length > 0 && <span className="text-[10px] text-muted-foreground/50">({details.filter(d => d.status === 'done').length}/{details.length})</span>}
+                            {details.length > 0 && <span className="text-[10px] text-slate-600/80 font-semibold">({details.filter(d => d.status === 'done').length}/{details.length})</span>}
                             <ExternalLink className="h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
                           </span>
-                          <span className="text-center text-[11px] text-muted-foreground font-mono">
+                          <span className="mtv-row-period">
                             {startStr} ~ {endStr}
                           </span>
                           <span className="text-right text-xs font-mono">
@@ -572,12 +610,20 @@ export function MemberTasksView() {
 
                         {/* Task details - 리스트 모드 */}
                         {details.length > 0 && !isCollapsed && detailViewMode === 'list' && (
-                          <div className="bg-muted/10 border-b border-border/20">
+                          <div className="mtv-detail-list">
                             {details.map((detail) => (
                               <div
                                 key={detail.id}
-                                className="flex items-center gap-2 pl-12 pr-5 py-1.5 text-[11px] hover:bg-accent/20 transition-colors cursor-pointer"
+                                className="mtv-detail-row"
                                 onClick={() => setCardDetailId(detail.id)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    setCardDetailId(detail.id)
+                                  }
+                                }}
                               >
                                 <StatusBadge status={detail.status} />
                                 <span className={cn('flex-1 truncate', detail.status === 'done' && 'line-through text-muted-foreground/60')}>
@@ -639,7 +685,7 @@ export function MemberTasksView() {
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
