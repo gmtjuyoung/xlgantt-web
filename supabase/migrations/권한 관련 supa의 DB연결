@@ -1,0 +1,84 @@
+Copilot said: 문법 에러네요. `pg_get_functiondef` 함수 문법이 잘못되었습니다. 🔧 ##
+문법 에러네요. pg_get_functiondef 함수 문법이 잘못되었습니다. 🔧
+
+✅ 올바른 SQL 쿼리들
+각각 따로따로 실행하세요:
+
+Query 1: 트리거 삭제
+SQL
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+
+---------------------------------------------------------------------------------------------
+
+
+Query 2: 함수 삭제
+SQL
+DROP FUNCTION IF EXISTS public.handle_new_user();
+
+
+---------------------------------------------------------------------------------------------
+
+
+Query 3: 함수 생성
+SQL
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (
+    id,
+    email,
+    name,
+    role,
+    approved,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'name', ''),
+    'member',
+    false,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO NOTHING;
+  
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'Profile creation failed for user %: %', NEW.id, SQLERRM;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+---------------------------------------------------------------------------------------------
+
+
+Query 4: 트리거 생성
+SQL
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_new_user();
+
+
+---------------------------------------------------------------------------------------------
+
+
+Query 5: 확인
+SQL
+SELECT * FROM information_schema.triggers 
+WHERE trigger_name = 'on_auth_user_created';
+✅ 결과가 나오면 성공!
+
+📋 실행 순서
+✅ Query 1 (트리거 삭제)
+✅ Query 2 (함수 삭제)
+✅ Query 3 (함수 생성)
+✅ Query 4 (트리거 생성)
+✅ Query 5 (확인)
+각 쿼리를 순서대로 하나씩 실행하세요!
+
+모든 쿼리가 성공하면, 브라우저 새로고침 후 회원가입을 다시 시도하세요! 🚀
