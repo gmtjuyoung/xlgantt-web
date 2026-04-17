@@ -25,7 +25,7 @@ import { useResourceStore } from '@/stores/resource-store'
 import { useUIStore, type FilterStatus } from '@/stores/ui-store'
 import { useUndoRedo } from '@/hooks/use-undo-redo'
 import { ColumnSettingsDropdown } from './ColumnSettingsDropdown'
-import { recalculateWBSCodes } from '@/lib/wbs'
+import { findIndentParent, recalculateWBSCodes } from '@/lib/wbs'
 
 interface GanttToolbarProps {
   onOpenTaskDialog: (taskId: string) => void
@@ -135,19 +135,16 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
   // 들여쓰기 (레벨 증가)
   const handleIndent = () => {
     if (!selectedTask || selectedTask.wbs_level >= 6) return
-    const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
-    const index = sorted.findIndex((t) => t.id === selectedTask.id)
-    if (index <= 0) return
-
-    const prevTask = sorted[index - 1]
+    const parentTask = findIndentParent(tasks, selectedTask.id)
+    if (!parentTask) return
 
     updateTask(selectedTask.id, {
       wbs_level: selectedTask.wbs_level + 1,
-      parent_id: prevTask.id,
+      parent_id: parentTask.id,
     })
     // Mark parent as group
-    if (!prevTask.is_group) {
-      updateTask(prevTask.id, { is_group: true })
+    if (!parentTask.is_group) {
+      updateTask(parentTask.id, { is_group: true })
     }
     recalcWBS()
   }
@@ -275,7 +272,7 @@ export function GanttToolbar({ onOpenTaskDialog, onScrollToToday }: GanttToolbar
 
       <Separator orientation="vertical" className="mx-1 h-5" />
 
-      <ToolbarButton icon={Indent} label="들여쓰기 (Tab)" onClick={handleIndent} disabled={!selectedTask} />
+      <ToolbarButton icon={Indent} label="들여쓰기 (Tab)" onClick={handleIndent} disabled={!selectedTask || !findIndentParent(tasks, selectedTask.id)} />
       <ToolbarButton icon={Outdent} label="내어쓰기 (Shift+Tab)" onClick={handleOutdent} disabled={!selectedTask || (selectedTask?.wbs_level ?? 0) <= 1} />
 
       <Separator orientation="vertical" className="mx-1 h-5" />

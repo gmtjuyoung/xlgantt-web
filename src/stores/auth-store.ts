@@ -18,6 +18,7 @@ export interface User {
   role: UserRole
   avatar_url?: string
   approved: boolean
+  force_password_change?: boolean
   created_at: string
 }
 
@@ -29,13 +30,14 @@ interface AuthState {
   isLoading: boolean
   authMode: 'supabase' | 'local'
 
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; redirectTo?: string }>
   signup: (email: string, name: string, password: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
-  updatePassword: (userId: string, newPassword: string) => Promise<void>
+  updatePassword: (userId: string, newPassword: string) => Promise<{ success: boolean; error?: string; message?: string }>
   updateUser: (userId: string, updates: Partial<User>) => Promise<void>
   deleteUser: (userId: string) => Promise<void>
   changePassword: (userId: string, currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>
+  completeForcedPasswordChange: (newPassword: string) => Promise<{ success: boolean; error?: string }>
   addUserManual: (email: string, name: string, password: string, role: UserRole) => Promise<{ success: boolean; error?: string }>
   initSession: () => Promise<void>
   fetchAllUsers: () => Promise<void>
@@ -83,18 +85,33 @@ function translateAuthError(message: string): string {
 }
 
 // profiles 테이블에서 사용자 정보 조회
-async function fetchProfile(userId: string): Promise<{ role: UserRole; approved: boolean; name: string; avatar_url?: string } | null> {
+async function fetchProfile(userId: string): Promise<{ role: UserRole; approved: boolean; name: string; avatar_url?: string; force_password_change?: boolean } | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('role, approved, name, avatar_url')
+    .select('role, approved, name, avatar_url, force_password_change')
     .eq('id', userId)
     .single()
-  if (error || !data) return null
+  if (error || !data) {
+    const fallback = await supabase
+      .from('profiles')
+      .select('role, approved, name, avatar_url')
+      .eq('id', userId)
+      .single()
+    if (fallback.error || !fallback.data) return null
+    return {
+      role: (fallback.data.role as UserRole) || 'member',
+      approved: fallback.data.approved ?? false,
+      name: fallback.data.name || '',
+      avatar_url: fallback.data.avatar_url || undefined,
+      force_password_change: false,
+    }
+  }
   return {
     role: (data.role as UserRole) || 'member',
     approved: data.approved ?? false,
     name: data.name || '',
     avatar_url: data.avatar_url || undefined,
+    force_password_change: data.force_password_change ?? false,
   }
 }
 
@@ -126,6 +143,7 @@ export const useAuthStore = create<AuthState>()(
                 role: profile.role,
                 avatar_url: profile.avatar_url,
                 approved: profile.approved,
+                force_password_change: profile.force_password_change ?? false,
                 created_at: session.user.created_at,
               }
               set({ currentUser: user, isAuthenticated: true })
@@ -148,6 +166,7 @@ export const useAuthStore = create<AuthState>()(
                   role: profile.role,
                   avatar_url: profile.avatar_url,
                   approved: profile.approved,
+                  force_password_change: profile.force_password_change ?? false,
                   created_at: session.user.created_at,
                 }
                 set({ currentUser: user, isAuthenticated: true })
@@ -171,19 +190,38 @@ export const useAuthStore = create<AuthState>()(
         if (authMode !== 'supabase') return
 
         try {
-          const { data, error } = await supabase
+          const { data, error } = await supabase.rpc('admin_list_users')
+
+          if (!error && data) {
+            const users: User[] = data.map((p: Record<string, unknown>) => ({
+              id: p.id,
+              email: (p.email as string) || '',
+              name: (p.name as string) || '',
+              role: (p.role as UserRole) || 'member',
+              approved: (p.approved as boolean) ?? false,
+              avatar_url: (p.avatar_url as string) || undefined,
+              force_password_change: (p.force_password_change as boolean) ?? false,
+              created_at: (p.created_at as string) || new Date().toISOString(),
+            }))
+            set({ users })
+            return
+          }
+
+          // Fallback for environments where the RPC migration has not been applied yet.
+          const fallback = await supabase
             .from('profiles')
             .select('id, email, name, role, approved, avatar_url, created_at')
             .order('created_at', { ascending: true })
 
-          if (!error && data) {
-            const users: User[] = data.map((p) => ({
+          if (!fallback.error && fallback.data) {
+            const users: User[] = fallback.data.map((p) => ({
               id: p.id,
               email: p.email || '',
               name: p.name || '',
               role: (p.role as UserRole) || 'member',
               approved: p.approved ?? false,
               avatar_url: p.avatar_url || undefined,
+              force_password_change: false,
               created_at: p.created_at || new Date().toISOString(),
             }))
             set({ users })
@@ -231,10 +269,11 @@ export const useAuthStore = create<AuthState>()(
               role: profile.role,
               avatar_url: profile.avatar_url,
               approved: profile.approved,
+              force_password_change: profile.force_password_change ?? false,
               created_at: data.user.created_at,
             }
             set({ currentUser: user, isAuthenticated: true, isLoading: false })
-            return { success: true }
+            return { success: true, redirectTo: profile.force_password_change ? '/force-password-change' : '/projects' }
           } catch {
             // Supabase 연결 실패 시 로컬 폴백
             console.warn('Supabase 로그인 실패, 로컬 인증 시도')
@@ -251,7 +290,7 @@ export const useAuthStore = create<AuthState>()(
         if (passwords[email] !== password) return { success: false, error: '비밀번호가 일치하지 않습니다' }
         if (!user.approved) return { success: false, error: '관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.' }
         set({ currentUser: user, isAuthenticated: true })
-        return { success: true }
+        return { success: true, redirectTo: user.force_password_change ? '/force-password-change' : '/projects' }
       },
 
       signup: async (rawEmail, name, password) => {
@@ -335,25 +374,41 @@ export const useAuthStore = create<AuthState>()(
         const { authMode, users, passwords } = get()
 
         if (authMode === 'supabase') {
-          // Supabase에서 다른 사용자의 비밀번호 변경은 service_role 필요
-          // 현재 사용자 본인의 경우만 가능
           try {
             const { data: { session } } = await supabase.auth.getSession()
             if (session?.user?.id === userId) {
-              await supabase.auth.updateUser({ password: newPassword })
+              const { error } = await supabase.auth.updateUser({ password: newPassword })
+              if (error) return { success: false, error: translateAuthError(error.message) }
+              await supabase.from('profiles').update({ force_password_change: false }).eq('id', userId)
+              const { currentUser } = get()
+              if (currentUser?.id === userId) {
+                set({
+                  currentUser: { ...currentUser, force_password_change: false },
+                  users: get().users.map((u) => (u.id === userId ? { ...u, force_password_change: false } : u)),
+                })
+              }
+              return { success: true, message: '비밀번호가 변경되었습니다.' }
             }
-            // 다른 사용자의 비밀번호 초기화는 service_role 키 필요 - 로컬에서는 불가
+            const { error } = await supabase.rpc('admin_reset_user_password', {
+              target_user_id: userId,
+              temp_password: newPassword,
+            })
+            if (error) return { success: false, error: translateAuthError(error.message) }
+            await get().fetchAllUsers()
+            return { success: true, message: '임시 비밀번호가 설정되었습니다. 다음 로그인 시 비밀번호를 변경해야 합니다.' }
           } catch {
             console.warn('비밀번호 변경 실패')
+            return { success: false, error: '비밀번호 처리에 실패했습니다' }
           }
-          return
         }
 
         // 로컬 폴백
         const user = users.find((u) => u.id === userId)
         if (user) {
           set({ passwords: { ...passwords, [user.email]: newPassword } })
+          return { success: true, message: '비밀번호가 변경되었습니다.' }
         }
+        return { success: false, error: '사용자를 찾을 수 없습니다' }
       },
 
       updateUser: async (userId, updates) => {
@@ -409,14 +464,19 @@ export const useAuthStore = create<AuthState>()(
 
         if (authMode === 'supabase') {
           try {
-            // profiles에서만 삭제 (auth.users는 service_role 필요)
-            const { error } = await supabase.from('profiles').delete().eq('id', userId)
-            if (error) {
-              console.error('사용자 삭제 실패:', error.message)
+            const { error } = await supabase.rpc('admin_delete_user', { target_user_id: userId })
+            if (!error) {
+              await get().fetchAllUsers()
               return
             }
-            // 로컬 상태에서도 제거
-            set({ users: users.filter((u) => u.id !== userId) })
+
+            // Fallback for environments where the RPC migration has not been applied yet.
+            const fallback = await supabase.from('profiles').delete().eq('id', userId)
+            if (fallback.error) {
+              console.error('사용자 삭제 실패:', fallback.error.message)
+              return
+            }
+            await get().fetchAllUsers()
           } catch {
             console.warn('사용자 삭제 실패')
           }
@@ -455,6 +515,14 @@ export const useAuthStore = create<AuthState>()(
             if (updateError) {
               return { success: false, error: translateAuthError(updateError.message) }
             }
+            await supabase.from('profiles').update({ force_password_change: false }).eq('id', userId)
+            const { currentUser } = get()
+            if (currentUser?.id === userId) {
+              set({
+                currentUser: { ...currentUser, force_password_change: false },
+                users: get().users.map((u) => (u.id === userId ? { ...u, force_password_change: false } : u)),
+              })
+            }
             return { success: true }
           } catch {
             return { success: false, error: '비밀번호 변경에 실패했습니다' }
@@ -468,6 +536,42 @@ export const useAuthStore = create<AuthState>()(
           return { success: false, error: '현재 비밀번호가 일치하지 않습니다' }
         }
         set({ passwords: { ...passwords, [user.email]: newPassword } })
+        return { success: true }
+      },
+
+      completeForcedPasswordChange: async (newPassword) => {
+        const { authMode, currentUser } = get()
+        if (!currentUser) return { success: false, error: '로그인 정보가 없습니다' }
+
+        if (authMode === 'supabase') {
+          try {
+            const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+            if (updateError) {
+              return { success: false, error: translateAuthError(updateError.message) }
+            }
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .update({ force_password_change: false })
+              .eq('id', currentUser.id)
+            if (profileError) {
+              return { success: false, error: profileError.message }
+            }
+            set({
+              currentUser: { ...currentUser, force_password_change: false },
+              users: get().users.map((u) => (u.id === currentUser.id ? { ...u, force_password_change: false } : u)),
+            })
+            return { success: true }
+          } catch {
+            return { success: false, error: '비밀번호 변경에 실패했습니다' }
+          }
+        }
+
+        const { passwords } = get()
+        set({
+          passwords: { ...passwords, [currentUser.email]: newPassword },
+          currentUser: { ...currentUser, force_password_change: false },
+          users: get().users.map((u) => (u.id === currentUser.id ? { ...u, force_password_change: false } : u)),
+        })
         return { success: true }
       },
 

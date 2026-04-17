@@ -25,7 +25,7 @@ export function LoginPage() {
     try {
       const result = await login(email, password)
       if (result.success) {
-        navigate('/projects')
+        navigate(result.redirectTo || '/projects')
       } else {
         setError(result.error || '로그인에 실패했습니다')
       }
