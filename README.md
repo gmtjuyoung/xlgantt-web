@@ -43,6 +43,16 @@ export default defineConfig([
 ])
 ```
 
+## Work Log Rule
+
+- 작업 기록 규칙: `docs/08_작업_기록_운영_규칙.md`
+- 세션 로그 파일: `docs/WORKLOG.md`
+
+권장 흐름:
+1. 브랜치 생성 후 작업 시작 전 `WORKLOG.md`에 `상태: 시작` 기록
+2. 주요 변경 완료 후 `상태: 적용`으로 변경 파일/검증 방법 기록
+3. 커밋 시 변경 이유와 영향 범위를 메시지에 남김
+
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js

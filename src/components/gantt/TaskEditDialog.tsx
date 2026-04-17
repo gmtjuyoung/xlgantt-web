@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, X, CheckSquare, Square, Paperclip, StickyNote, Maximize2, Minimize2, Link2, Users, FileText, ArrowRight, ArrowLeft, Upload, Trash2, Image, File as FileIcon, Loader2 } from 'lucide-react'
+import { Plus, X, CheckSquare, Square, Paperclip, StickyNote, Link2, Users, FileText, ArrowRight, ArrowLeft, Upload, Trash2, Image, File as FileIcon, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -37,10 +37,11 @@ function Section({ icon: Icon, title, count, children, className }: {
   className?: string
 }) {
   return (
-    <div className={cn("rounded-lg border border-border/60 bg-card", className)}>
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-muted/30 rounded-t-lg">
-        {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
-        <span className="text-xs font-semibold tracking-wide text-foreground/70 uppercase">{title}</span>
+    <div className={cn("rounded-lg border border-border/60 bg-card overflow-hidden", className)}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-primary/30 bg-slate-200/70 dark:bg-slate-700/50">
+        <div className="w-1 h-4 bg-primary rounded-full flex-shrink-0" />
+        {Icon && <Icon className="h-4 w-4 text-primary" />}
+        <span className="text-xs font-bold tracking-wide text-foreground uppercase">{title}</span>
         {count !== undefined && (
           <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-auto">{count}</Badge>
         )}
@@ -73,6 +74,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   const [actualEnd, setActualEnd] = useState('')
   const [totalWorkload, setTotalWorkload] = useState('')
   const [actualProgress, setActualProgress] = useState('')
+  const [useActualOverride, setUseActualOverride] = useState(false)
   const [remarks, setRemarks] = useState('')
   const [calendarType, setCalendarType] = useState('STD')
   const [isMilestone, setIsMilestone] = useState(false)
@@ -85,7 +87,6 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   const [hideCompletedDetails, setHideCompletedDetails] = useState(false)
   const [newAssignPercent, setNewAssignPercent] = useState('100')
   const [newDetailTitle, setNewDetailTitle] = useState('')
-  const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
@@ -96,7 +97,10 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
       setActualStart(task.actual_start || '')
       setActualEnd(task.actual_end || '')
       setTotalWorkload(task.total_workload?.toString() || '')
-      setActualProgress((task.actual_progress * 100).toString())
+      const hasActualOverride = task.actual_progress_override != null
+      setUseActualOverride(hasActualOverride)
+      const progressValue = hasActualOverride ? (task.actual_progress_override ?? 0) : task.actual_progress
+      setActualProgress((progressValue * 100).toString())
       setRemarks(task.remarks || '')
       setCalendarType(task.calendar_type || 'STD')
       setIsMilestone(task.is_milestone || false)
@@ -144,12 +148,26 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
   }, [taskId, taskDetails])
 
   const hasDetails = currentDetails.length > 0
+  const hasAssignments = taskAssignments.length > 0
 
   const detailProgress = useMemo(() => {
     if (currentDetails.length === 0) return null
     const done = currentDetails.filter((d) => d.status === 'done').length
     return Math.round((done / currentDetails.length) * 100)
   }, [currentDetails])
+
+  const assignmentProgress = useMemo(() => {
+    if (taskAssignments.length === 0) return null
+    const totalAllocation = taskAssignments.reduce((sum, a) => sum + Math.max(0, a.allocation_percent || 0), 0)
+    const totalWeight = totalAllocation > 0 ? totalAllocation : taskAssignments.length
+    if (totalWeight <= 0) return 0
+    const weighted = taskAssignments.reduce((sum, a) => {
+      const weight = totalAllocation > 0 ? Math.max(0, a.allocation_percent || 0) : 1
+      const memberProgress = Math.max(0, Math.min(100, a.progress_percent || 0))
+      return sum + (memberProgress * weight)
+    }, 0) / totalWeight
+    return Math.round(weighted)
+  }, [taskAssignments])
 
   const handleDetailStatusChange = (detailId: string, currentStatus: string) => {
     const next = currentStatus === 'todo' ? 'in_progress' : currentStatus === 'in_progress' ? 'done' : 'todo'
@@ -173,10 +191,29 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
       calendar_type: calendarType as 'STD' | 'UD1' | 'UD2',
       is_milestone: isMilestone,
     }
-    // 세부항목이 있으면 진척률/작업량은 자동 계산이므로 저장에서 제외
+    // 세부항목이 있으면 작업량은 자동 계산 유지
     if (!hasDetails) {
       changes.total_workload = totalWorkload ? parseFloat(totalWorkload) : undefined
-      changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+    }
+    // 실적 진척률: 세부항목이 있으면 자동 기본, 필요 시 PM이 수동 override
+    if (!isGroup) {
+      if (hasDetails) {
+        if (useActualOverride) {
+          changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+        } else {
+          // 세부항목 자동 계산 모드 유지 (override만 해제)
+          changes.actual_progress_override = undefined
+        }
+      } else if (hasAssignments) {
+        if (useActualOverride) {
+          changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+        } else {
+          // 담당자 진척률 자동 계산 모드 유지 (override만 해제)
+          changes.actual_progress_override = undefined
+        }
+      } else {
+        changes.actual_progress = actualProgress ? parseFloat(actualProgress) / 100 : 0
+      }
     }
     updateTask(taskId, changes)
     onClose()
@@ -199,7 +236,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
     const existingMemberIds = new Set(taskAssignments.map(a => a.member_id))
     newAssignMemberIds.forEach((memberId) => {
       if (!existingMemberIds.has(memberId)) {
-        addAssignment({ id: crypto.randomUUID(), task_id: taskId, member_id: memberId, allocation_percent: parseInt(newAssignPercent) || 100 })
+        addAssignment({ id: crypto.randomUUID(), task_id: taskId, member_id: memberId, allocation_percent: parseInt(newAssignPercent) || 100, progress_percent: 0 })
       }
     })
     setNewAssignMemberIds([])
@@ -210,7 +247,6 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
     const newId = crypto.randomUUID()
     addTaskDetail({ id: newId, task_id: taskId, sort_order: currentDetails.length * 1000 + 1000, title: newDetailTitle, status: 'todo', created_at: new Date().toISOString() })
     setNewDetailTitle('')
-    setExpandedDetails(prev => new Set(prev).add(newId))
   }
 
   if (!task) return null
@@ -220,7 +256,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[1000px] w-[92vw] max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="max-w-[1360px] w-[96vw] max-h-[92vh] overflow-y-auto p-0">
         {/* ─── 헤더 ─── */}
         <div className="sticky top-0 z-10 bg-background border-b px-5 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -237,7 +273,7 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
 
         <div className="p-5 space-y-4">
           {/* ─── 상단 2컬럼: 기본정보 + 선행후행 ─── */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-[1.25fr_1fr] gap-4">
             {/* 왼쪽: 기본 정보 + 담당자 */}
             <div className="space-y-4">
               <Section icon={FileText} title="기본 정보">
@@ -279,9 +315,34 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                       <Input type="number" step="0.1" value={hasDetails ? currentDetails.length : totalWorkload} onChange={(e) => setTotalWorkload(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
                       {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
                     </Field>
-                    <Field label={hasDetails ? '진척률 (자동)' : '진척률 (%)'}>
-                      <Input type="number" min="0" max="100" value={hasDetails ? (detailProgress ?? 0) : actualProgress} onChange={(e) => setActualProgress(e.target.value)} className={cn(fieldCls, hasDetails && "bg-muted/60 text-muted-foreground")} disabled={isGroup || hasDetails} />
-                      {hasDetails && <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">세부항목 기준 자동 계산</span>}
+                    <Field label="진척률 (%)">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={
+                          hasDetails
+                            ? (useActualOverride ? actualProgress : String(detailProgress ?? 0))
+                            : hasAssignments
+                              ? (useActualOverride ? actualProgress : String(assignmentProgress ?? 0))
+                              : actualProgress
+                        }
+                        onChange={(e) => setActualProgress(e.target.value)}
+                        className={cn(fieldCls, (hasDetails || hasAssignments) && !useActualOverride && "bg-muted/60 text-muted-foreground")}
+                        disabled={isGroup || ((hasDetails || hasAssignments) && !useActualOverride)}
+                      />
+                      {(hasDetails || hasAssignments) && (
+                        <label className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+                          <input
+                            type="checkbox"
+                            checked={useActualOverride}
+                            onChange={(e) => setUseActualOverride(e.target.checked)}
+                            className="w-3 h-3 rounded accent-primary"
+                            disabled={isGroup}
+                          />
+                          PM 수동값 사용 (해제하면 {hasDetails ? '세부항목' : '담당자'} 자동 계산)
+                        </label>
+                      )}
                     </Field>
                     <Field label="비고">
                       <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="h-7 text-xs" placeholder="메모" />
@@ -293,28 +354,69 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
               <Section icon={Users} title="담당자" count={taskAssignments.length}>
                 <div className="space-y-1">
                   {taskAssignments.map((a) => (
-                    <div key={a.id} className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent/30 transition-colors group/assign">
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 shadow-sm" style={{ backgroundColor: a.company?.color || '#888' }}>
-                        {a.member?.name.charAt(0)}
+                    <div key={a.id} className="rounded-lg border border-border/60 bg-background/70 px-2.5 py-2.5 hover:bg-accent/20 transition-colors group/assign">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 shadow-sm" style={{ backgroundColor: a.company?.color || '#888' }}>
+                          {a.member?.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold leading-none truncate">{a.member?.name || '?'}</div>
+                          <div className="mt-1 text-[10px] text-muted-foreground/70 leading-none">{a.company?.shortName || '미지정'}</div>
+                        </div>
+
+                        <div className="ml-auto flex items-center gap-1.5 min-w-[210px]">
+                          <span className="text-[10px] text-muted-foreground/80 whitespace-nowrap">진척률</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={a.progress_percent ?? 0}
+                            onChange={(e) => {
+                              const parsed = Number.parseInt(e.target.value, 10)
+                              if (Number.isNaN(parsed)) return
+                              updateAssignment(a.id, { progress_percent: Math.max(0, Math.min(100, parsed)) })
+                            }}
+                            className="h-7 w-16 text-xs text-right px-2 font-semibold"
+                          />
+                          <span className="text-[11px] font-semibold text-foreground/90">%</span>
+                        </div>
+
+                        <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover/assign:opacity-70" onClick={() => removeAssignment(a.id)}>
+                          <X className="h-3.5 w-3.5 text-red-500" />
+                        </Button>
                       </div>
-                      <span className="text-xs font-medium flex-1 truncate">{a.member?.name || '?'}</span>
-                      <span className="text-[10px] text-muted-foreground/60">{a.company?.shortName}</span>
-                      <Input
-                        type="number" min={1} max={100} value={a.allocation_percent}
-                        onChange={(e) => updateAssignment(a.id, { allocation_percent: parseInt(e.target.value) || 100 })}
-                        className="w-14 h-5 text-[11px] text-right px-1.5 border-transparent hover:border-border focus:border-border"
-                      />
-                      <span className="text-[10px] text-muted-foreground/50">%</span>
-                      <Button variant="ghost" size="icon" className="h-4 w-4 opacity-0 group-hover/assign:opacity-60" onClick={() => removeAssignment(a.id)}>
-                        <X className="h-2.5 w-2.5 text-red-500" />
-                      </Button>
+
+                      <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all"
+                            style={{ width: `${Math.max(0, Math.min(100, a.progress_percent ?? 0))}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground/70 whitespace-nowrap">투입률</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={a.allocation_percent}
+                            onChange={(e) => {
+                              const parsed = Number.parseInt(e.target.value, 10)
+                              if (Number.isNaN(parsed)) return
+                              updateAssignment(a.id, { allocation_percent: Math.max(1, Math.min(100, parsed)) })
+                            }}
+                            className="h-6 w-14 text-[11px] text-right px-1.5"
+                          />
+                          <span className="text-[10px] text-muted-foreground/70">%</span>
+                        </div>
+                      </div>
                     </div>
                   ))}
-                  <div className="flex gap-1.5 pt-1">
+                  <div className="flex gap-1.5 pt-1.5">
                     <div className="flex-1">
                       <MemberPicker value={newAssignMemberIds} onChange={setNewAssignMemberIds} placeholder="담당자 선택..." size="sm" />
                     </div>
-                    <Input type="number" min="1" max="100" value={newAssignPercent} onChange={(e) => setNewAssignPercent(e.target.value)} className="w-16 h-7 text-xs px-1.5" placeholder="%" />
+                    <Input type="number" min="1" max="100" value={newAssignPercent} onChange={(e) => setNewAssignPercent(e.target.value)} className="w-18 h-7 text-xs px-1.5 text-right" placeholder="투입%" />
                     <Button size="sm" variant="outline" className="h-7 px-2" onClick={handleAddAssignment} disabled={newAssignMemberIds.length === 0}>
                       <Plus className="h-3 w-3" />
                     </Button>
@@ -359,12 +461,14 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                         </SelectContent>
                       </Select>
                       <Select value={String(newPredType)} onValueChange={(v) => v && setNewPredType(Number(v) as DependencyType)}>
-                        <SelectTrigger className="w-16 h-7 text-xs"><SelectValue>{DEP_TYPE_LABELS[newPredType]}</SelectValue></SelectTrigger>
+                        <SelectTrigger className="w-32 h-7 text-[11px]">
+                          <SelectValue>{DEP_TYPE_LABELS[newPredType]}</SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1">FS</SelectItem>
-                          <SelectItem value="2">SS</SelectItem>
-                          <SelectItem value="3">FF</SelectItem>
-                          <SelectItem value="4">SF</SelectItem>
+                          <SelectItem value="1">{DEP_TYPE_LABELS[1]}</SelectItem>
+                          <SelectItem value="2">{DEP_TYPE_LABELS[2]}</SelectItem>
+                          <SelectItem value="3">{DEP_TYPE_LABELS[3]}</SelectItem>
+                          <SelectItem value="4">{DEP_TYPE_LABELS[4]}</SelectItem>
                         </SelectContent>
                       </Select>
                       <Button size="sm" variant="outline" className="h-7 px-2" onClick={handleAddPred} disabled={!newPredId}><Plus className="h-3 w-3" /></Button>
@@ -403,12 +507,14 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                         </SelectContent>
                       </Select>
                       <Select value={String(newSuccType)} onValueChange={(v) => v && setNewSuccType(Number(v) as DependencyType)}>
-                        <SelectTrigger className="w-16 h-7 text-xs"><SelectValue>{DEP_TYPE_LABELS[newSuccType]}</SelectValue></SelectTrigger>
+                        <SelectTrigger className="w-32 h-7 text-[11px]">
+                          <SelectValue>{DEP_TYPE_LABELS[newSuccType]}</SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1">FS</SelectItem>
-                          <SelectItem value="2">SS</SelectItem>
-                          <SelectItem value="3">FF</SelectItem>
-                          <SelectItem value="4">SF</SelectItem>
+                          <SelectItem value="1">{DEP_TYPE_LABELS[1]}</SelectItem>
+                          <SelectItem value="2">{DEP_TYPE_LABELS[2]}</SelectItem>
+                          <SelectItem value="3">{DEP_TYPE_LABELS[3]}</SelectItem>
+                          <SelectItem value="4">{DEP_TYPE_LABELS[4]}</SelectItem>
                         </SelectContent>
                       </Select>
                       <Button size="sm" variant="outline" className="h-7 px-2" onClick={handleAddSucc} disabled={!newSuccId}><Plus className="h-3 w-3" /></Button>
@@ -541,24 +647,22 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
               </Button>
             </div>
 
-            {/* 카드 목록 */}
-            <div className="space-y-2">
+            {/* 카드 목록 — 스크롤 영역 (더 큰 높이 확보) */}
+            <div className="space-y-2 max-h-[420px] min-h-[180px] overflow-y-auto pr-1">
               {currentDetails.filter((d) => !hideCompletedDetails || d.status !== 'done').map((detail) => {
-                const assignee = detail.assignee_id ? members.find(m => m.id === detail.assignee_id) : null
-                const isExpanded = expandedDetails.has(detail.id)
                 const accent = {
-                  todo: { card: 'border-l-amber-400 bg-amber-50/30', header: 'text-amber-600', check: 'text-amber-400' },
-                  in_progress: { card: 'border-l-blue-400 bg-blue-50/30', header: 'text-blue-600', check: 'text-blue-500' },
-                  done: { card: 'border-l-emerald-400 bg-emerald-50/30', header: 'text-emerald-600', check: 'text-emerald-500' },
+                  todo: { card: 'border-l-amber-400 bg-amber-50/30', chip: 'bg-amber-100 text-amber-700 border-amber-200', check: 'text-amber-400', label: '대기' },
+                  in_progress: { card: 'border-l-blue-400 bg-blue-50/30', chip: 'bg-blue-100 text-blue-700 border-blue-200', check: 'text-blue-500', label: '진행중' },
+                  done: { card: 'border-l-emerald-400 bg-emerald-50/30', chip: 'bg-emerald-100 text-emerald-700 border-emerald-200', check: 'text-emerald-500', label: '완료' },
                 }[detail.status]
 
                 return (
                   <div key={detail.id} className={cn(
-                    "rounded-md border border-border/40 border-l-[3px] shadow-sm transition-all hover:shadow group/note",
+                    "rounded-md border border-border/40 border-l-[3px] shadow-sm transition-all hover:shadow group/note px-2.5 py-2 space-y-1.5",
                     accent.card
                   )}>
-                    {/* 카드 헤더 */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+                    {/* Row 1: 체크 + 제목 + 삭제 */}
+                    <div className="flex items-center gap-1.5">
                       <button className="flex-shrink-0" onClick={() => handleDetailStatusChange(detail.id, detail.status)}>
                         {detail.status === 'done'
                           ? <CheckSquare className={cn("h-4 w-4", accent.check)} />
@@ -569,15 +673,21 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                         value={detail.title}
                         onChange={(e) => updateTaskDetail(detail.id, { title: e.target.value })}
                         className={cn(
-                          "h-5 text-xs font-medium border border-transparent bg-white/80 px-1 shadow-none focus-visible:ring-1 focus-visible:border-border rounded flex-1 min-w-0",
+                          "h-6 text-xs font-medium border border-transparent bg-white/80 px-1.5 shadow-none focus-visible:ring-1 focus-visible:border-border rounded flex-1 min-w-0",
                           detail.status === 'done' && 'line-through text-muted-foreground'
                         )}
                       />
+                      <Button variant="ghost" size="icon" className="h-5 w-5 flex-shrink-0 opacity-0 group-hover/note:opacity-60 hover:!opacity-100" onClick={() => deleteTaskDetail(detail.id)}>
+                        <X className="h-3 w-3 text-red-500" />
+                      </Button>
+                    </div>
+
+                    {/* Row 2: 상태칩 + 담당자 + 기한 (항상 표시) */}
+                    <div className="flex items-center flex-wrap gap-2 pl-6">
+                      {/* 상태 칩 (DropdownMenu 대신 Select 그대로 쓰되 외형을 칩으로) */}
                       <Select value={detail.status} onValueChange={(v) => handleDetailStatusSet(detail.id, v as 'todo' | 'in_progress' | 'done')}>
-                        <SelectTrigger className={cn("h-6 w-[80px] text-xs border-none bg-white/50 shadow-none px-1.5 flex-shrink-0", accent.header)}>
-                          <SelectValue>
-                            {detail.status === 'todo' ? '대기' : detail.status === 'in_progress' ? '진행중' : '완료'}
-                          </SelectValue>
+                        <SelectTrigger className={cn("h-6 w-auto min-w-[64px] text-[11px] font-semibold rounded-full px-2.5 border shadow-none gap-1 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-60", accent.chip)}>
+                          <SelectValue>{accent.label}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="todo">대기</SelectItem>
@@ -585,60 +695,30 @@ export function TaskEditDialog({ taskId, open, onClose }: TaskEditDialogProps) {
                           <SelectItem value="done">완료</SelectItem>
                         </SelectContent>
                       </Select>
-                      <button
-                        className="flex-shrink-0 p-0.5 rounded hover:bg-black/5"
-                        onClick={() => setExpandedDetails(prev => {
-                          const next = new Set(prev)
-                          next.has(detail.id) ? next.delete(detail.id) : next.add(detail.id)
-                          return next
-                        })}
-                      >
-                        {isExpanded ? <Minimize2 className="h-3 w-3 text-muted-foreground/50" /> : <Maximize2 className="h-3 w-3 text-muted-foreground/50" />}
-                      </button>
-                      <Button variant="ghost" size="icon" className="h-4 w-4 flex-shrink-0 opacity-0 group-hover/note:opacity-50 hover:!opacity-100" onClick={() => deleteTaskDetail(detail.id)}>
-                        <X className="h-2.5 w-2.5 text-red-500" />
-                      </Button>
+                      <MemberPicker
+                        value={detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])}
+                        onChange={(ids) => updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })}
+                        placeholder="담당자"
+                        size="sm"
+                      />
+                      <DatePicker
+                        value={detail.due_date || ''}
+                        onChange={(d) => updateTaskDetail(detail.id, { due_date: d || undefined })}
+                        placeholder="기한 없음"
+                        className="h-6 text-[11px] bg-white/60 border border-border/40 rounded-full px-2 hover:bg-white"
+                      />
                     </div>
 
-                    {/* 축소 시 메타 한줄 */}
-                    {!isExpanded && (assignee || detail.due_date) && (
-                      <div className="px-2.5 pb-1.5 flex gap-3 text-[10px] text-muted-foreground/50">
-                        {assignee && <span>{assignee.name}</span>}
-                        {detail.due_date && <span>{detail.due_date}</span>}
-                      </div>
-                    )}
-
-                    {/* 확장 시 */}
-                    {isExpanded && (
-                      <div className="px-2.5 pb-2 pt-1 border-t border-border/20 space-y-1.5">
-                        <textarea
-                          placeholder="메모..."
-                          value={detail.description || ''}
-                          onChange={(e) => {
-                            updateTaskDetail(detail.id, { description: e.target.value })
-                            e.target.style.height = 'auto'
-                            e.target.style.height = e.target.scrollHeight + 'px'
-                          }}
-                          onFocus={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px' }}
-                          className="w-full text-[11px] text-foreground/70 bg-white border border-border/60 rounded px-1.5 py-1 resize-none outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/30 min-h-[32px] overflow-hidden"
-                          rows={2}
-                        />
-                        <div className="flex items-center gap-3">
-                          <MemberPicker
-                            value={detail.assignee_ids || (detail.assignee_id ? [detail.assignee_id] : [])}
-                            onChange={(ids) => updateTaskDetail(detail.id, { assignee_ids: ids, assignee_id: ids[0] || undefined })}
-                            placeholder="담당자"
-                            size="sm"
-                          />
-                          <DatePicker
-                            value={detail.due_date || ''}
-                            onChange={(d) => updateTaskDetail(detail.id, { due_date: d || undefined })}
-                            placeholder="기한"
-                            className="h-6 text-[11px] border-none bg-transparent shadow-none px-1"
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {/* Row 3: 메모 (항상 표시, 한 줄부터 시작, 포커스 시 확장) */}
+                    <div className="pl-6">
+                      <textarea
+                        placeholder="메모..."
+                        value={detail.description || ''}
+                        onChange={(e) => updateTaskDetail(detail.id, { description: e.target.value })}
+                        className="w-full text-[11px] text-foreground/70 bg-white/60 border border-border/40 rounded px-2 py-1 resize-y outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/30"
+                        rows={1}
+                      />
+                    </div>
                   </div>
                 )
               })}

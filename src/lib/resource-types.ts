@@ -25,6 +25,7 @@ export interface TaskAssignment {
   task_id: string
   member_id: string
   allocation_percent: number // 1-100
+  progress_percent: number   // 0-100
 }
 
 // WBS 세부항목 (작업의 하위 체크리스트/작업항목)

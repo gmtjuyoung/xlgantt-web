@@ -24,6 +24,7 @@ export function AdminPage() {
   const [resetTarget, setResetTarget] = useState<User | null>(null)
   const [resetPassword, setResetPassword] = useState('123456')
   const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState('')
 
   const [refreshing, setRefreshing] = useState(false)
 
@@ -83,12 +84,20 @@ export function AdminPage() {
   const handleResetPassword = async () => {
     if (resetTarget && resetPassword.length >= 6) {
       setResetLoading(true)
+      setResetError('')
       try {
-        await updatePassword(resetTarget.id, resetPassword)
+        const result = await updatePassword(resetTarget.id, resetPassword)
+        if (!result.success) {
+          setResetError(result.error || '비밀번호 초기화에 실패했습니다')
+          return
+        }
         setResetTarget(null)
         setResetPassword('123456')
+        if (result.message) {
+          alert(result.message)
+        }
       } catch {
-        // 에러 무시
+        setResetError('비밀번호 초기화 중 오류가 발생했습니다')
       } finally {
         setResetLoading(false)
       }
@@ -110,9 +119,9 @@ export function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 h-12 flex items-center justify-between">
+    <div className="std-page">
+      <header className="std-page-header">
+        <div className="std-page-header-inner">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
               <BarChart3 className="h-3.5 w-3.5" />
@@ -127,7 +136,7 @@ export function AdminPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="std-page-main">
         <div className="flex items-end justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
@@ -150,7 +159,7 @@ export function AdminPage() {
           </div>
         </div>
 
-        <div className="border rounded-lg overflow-hidden">
+        <div className="std-surface overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -214,8 +223,11 @@ export function AdminPage() {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        onClick={() => setResetTarget(user)}
-                        title={authMode === 'supabase' ? '비밀번호 초기화 (본인만 가능)' : '비밀번호 초기화'}
+                        onClick={() => {
+                          setResetError('')
+                          setResetTarget(user)
+                        }}
+                        title={authMode === 'supabase' ? '임시 비밀번호 설정' : '비밀번호 초기화'}
                       >
                         <KeyRound className="h-3.5 w-3.5" />
                       </Button>
@@ -246,19 +258,19 @@ export function AdminPage() {
           </DialogHeader>
           <div className="space-y-3 mt-1">
             <div>
-              <label className="block text-xs font-medium mb-1">이름</label>
+              <label className="std-form-label">이름</label>
               <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름" className="h-8 text-sm" autoFocus disabled={addLoading} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">이메일</label>
+              <label className="std-form-label">이메일</label>
               <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@example.com" className="h-8 text-sm" disabled={addLoading} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">초기 비밀번호</label>
+              <label className="std-form-label">초기 비밀번호</label>
               <Input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6자 이상" className="h-8 text-sm" disabled={addLoading} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">역할</label>
+              <label className="std-form-label">역할</label>
               <Select value={newRole} onValueChange={(v) => setNewRole(v as UserRole)} disabled={addLoading}>
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
@@ -272,10 +284,10 @@ export function AdminPage() {
               </Select>
             </div>
             {addError && (
-              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded-md">{addError}</p>
+              <p className="std-feedback-error">{addError}</p>
             )}
             {authMode === 'supabase' && (
-              <p className="text-[11px] text-muted-foreground">Supabase Auth로 사용자가 생성되며, 즉시 승인됩니다.</p>
+              <p className="std-feedback-info">Supabase Auth로 사용자가 생성되며, 즉시 승인됩니다.</p>
             )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={() => setShowAddUser(false)} disabled={addLoading}>취소</Button>
@@ -288,32 +300,33 @@ export function AdminPage() {
       </Dialog>
 
       {/* 비밀번호 초기화 다이얼로그 */}
-      <Dialog open={!!resetTarget} onOpenChange={() => setResetTarget(null)}>
+      <Dialog open={!!resetTarget} onOpenChange={() => { setResetTarget(null); setResetError('') }}>
         <DialogContent className="max-w-xs">
           <DialogHeader>
-            <DialogTitle className="text-base">비밀번호 초기화</DialogTitle>
+            <DialogTitle className="text-base">임시 비밀번호 설정</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-1">
             <p className="text-sm text-muted-foreground">
               <strong>{resetTarget?.name}</strong> ({resetTarget?.email})
             </p>
-            {authMode === 'supabase' && resetTarget?.id !== currentUser.id && (
-              <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 rounded-md">
-                Supabase 모드에서는 다른 사용자의 비밀번호를 직접 변경할 수 없습니다. Service Role 키가 필요합니다.
+            {authMode === 'supabase' && (
+              <p className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-md border border-amber-200/80">
+                저장한 값이 임시 비밀번호로 설정됩니다. 대상 사용자는 다음 로그인 직후 새 비밀번호를 다시 입력해야 합니다.
               </p>
             )}
             <div>
-              <label className="block text-xs font-medium mb-1">새 비밀번호</label>
+              <label className="std-form-label">임시 비밀번호</label>
               <Input value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} className="h-8 text-sm" disabled={resetLoading} />
             </div>
+            {resetError && <p className="std-feedback-error">{resetError}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={() => setResetTarget(null)} disabled={resetLoading}>취소</Button>
               <Button
                 size="sm"
                 onClick={handleResetPassword}
-                disabled={resetPassword.length < 6 || resetLoading || (authMode === 'supabase' && resetTarget?.id !== currentUser.id)}
+                disabled={resetPassword.length < 6 || resetLoading}
               >
-                {resetLoading ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />변경 중...</> : '초기화'}
+                {resetLoading ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />설정 중...</> : '임시 비밀번호 설정'}
               </Button>
             </div>
           </div>

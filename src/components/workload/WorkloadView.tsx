@@ -14,6 +14,7 @@ import type { Task } from '@/lib/types'
 import type { TeamMember, Company, TaskAssignment } from '@/lib/resource-types'
 
 type TimeBucket = 'monthly' | 'weekly'
+type WorkloadBasis = 'planned' | 'earned' | 'remaining'
 
 // ============================================================
 // Workload calculation engine
@@ -34,7 +35,8 @@ function buildCrosstab(
   companies: Company[],
   projectStart: string,
   projectEnd: string,
-  timeBucket: TimeBucket
+  timeBucket: TimeBucket,
+  basis: WorkloadBasis
 ) {
   const start = new Date(projectStart)
   const end = new Date(projectEnd)
@@ -65,9 +67,14 @@ function buildCrosstab(
     }
   }
 
-  // Build cells: for each member × bucket, calculate workload
+  // Build cells: for each member × bucket, calculate selected workload basis
   const cells: CrosstabCell[] = []
   const leafTasks = tasks.filter((t) => !t.is_group)
+  const assignmentMap = new Map<string, TaskAssignment[]>()
+  for (const a of assignments) {
+    if (!assignmentMap.has(a.task_id)) assignmentMap.set(a.task_id, [])
+    assignmentMap.get(a.task_id)!.push(a)
+  }
 
   for (const member of members) {
     const company = companies.find((c) => c.id === member.company_id)
@@ -93,8 +100,19 @@ function buildCrosstab(
         const overlapDuration = (overlapEnd.getTime() - overlapStart.getTime()) / 86400000 + 1
         const ratio = overlapDuration / taskDuration
         const allocationRatio = assign.allocation_percent / 100
+        const plannedChunk = task.total_workload * ratio * allocationRatio
 
-        totalWorkload += task.total_workload * ratio * allocationRatio
+        const taskAssigns = assignmentMap.get(task.id) || []
+        const hasMeaningfulAssignmentProgress = taskAssigns.some((a) => (a.progress_percent || 0) > 0)
+        const memberProgress = hasMeaningfulAssignmentProgress
+          ? Math.max(0, Math.min(100, assign.progress_percent || 0)) / 100
+          : Math.max(0, Math.min(1, task.actual_progress || 0))
+        const earnedChunk = plannedChunk * memberProgress
+        const remainingChunk = Math.max(0, plannedChunk - earnedChunk)
+
+        if (basis === 'planned') totalWorkload += plannedChunk
+        else if (basis === 'earned') totalWorkload += earnedChunk
+        else totalWorkload += remainingChunk
       }
 
       if (totalWorkload > 0) {
@@ -181,6 +199,7 @@ export function WorkloadView() {
   const project = useProjectStore((s) => s.currentProject)
   const { companies, members, assignments } = useResourceStore()
   const [timeBucket, setTimeBucket] = useState<TimeBucket>('monthly')
+  const [basis, setBasis] = useState<WorkloadBasis>('planned')
 
   // Calendar data for capacity calculation
   const getWorkingDaysFor = useCalendarStore((s) => s.getWorkingDaysFor)
@@ -192,8 +211,8 @@ export function WorkloadView() {
 
   const { buckets, cells } = useMemo(() => {
     if (!project) return { buckets: [], cells: [] }
-    return buildCrosstab(tasks, assignments, members, companies, project.start_date, project.end_date, timeBucket)
-  }, [tasks, assignments, members, companies, project, timeBucket])
+    return buildCrosstab(tasks, assignments, members, companies, project.start_date, project.end_date, timeBucket, basis)
+  }, [tasks, assignments, members, companies, project, timeBucket, basis])
 
   // Get unique members who have assignments
   const activeMembers = useMemo(() => {
@@ -295,28 +314,52 @@ export function WorkloadView() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-bold text-foreground">작업량 현황</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{project.name} - 리소스별 작업량 배분</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{project.name} - 리소스별 {basis === 'planned' ? '계획' : basis === 'earned' ? '실적' : '잔여'} 작업량 배분</p>
         </div>
-        {/* 기간 전환 토글 */}
-        <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-0.5">
-          <button
-            onClick={() => setTimeBucket('monthly')}
-            className={cn(
-              "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-              timeBucket === 'monthly' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            월별
-          </button>
-          <button
-            onClick={() => setTimeBucket('weekly')}
-            className={cn(
-              "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-              timeBucket === 'weekly' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            주별
-          </button>
+        <div className="flex items-center gap-2">
+          {/* 기간 전환 토글 */}
+          <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-0.5">
+            <button
+              onClick={() => setTimeBucket('monthly')}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                timeBucket === 'monthly' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              월별
+            </button>
+            <button
+              onClick={() => setTimeBucket('weekly')}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                timeBucket === 'weekly' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              주별
+            </button>
+          </div>
+
+          {/* 기준 전환 토글 */}
+          <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-0.5">
+            <button
+              onClick={() => setBasis('planned')}
+              className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors", basis === 'planned' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            >
+              계획
+            </button>
+            <button
+              onClick={() => setBasis('earned')}
+              className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors", basis === 'earned' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            >
+              실적
+            </button>
+            <button
+              onClick={() => setBasis('remaining')}
+              className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors", basis === 'remaining' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            >
+              잔여
+            </button>
+          </div>
         </div>
       </div>
 
@@ -342,7 +385,7 @@ export function WorkloadView() {
         <>
           {/* Stacked Histogram */}
           <div className="bg-card rounded-xl border border-border/50 p-5 mb-6 shadow-sm">
-            <h3 className="text-sm font-semibold mb-4">리소스별 작업량 히스토그램 (M/D)</h3>
+            <h3 className="text-sm font-semibold mb-4">리소스별 {basis === 'planned' ? '계획' : basis === 'earned' ? '실적' : '잔여'} 작업량 히스토그램 (M/D)</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={histogramData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.005 250)" />
@@ -373,7 +416,7 @@ export function WorkloadView() {
           <div className="bg-card rounded-xl border border-border/50 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between">
               <h3 className="text-sm font-semibold">리소스 x 기간 크로스탭</h3>
-              <span className="text-xs text-muted-foreground">{timeBucket === 'monthly' ? '월별' : '주별'} - 단위: M/D</span>
+              <span className="text-xs text-muted-foreground">{timeBucket === 'monthly' ? '월별' : '주별'} · {basis === 'planned' ? '계획' : basis === 'earned' ? '실적' : '잔여'} 기준 · 단위: M/D</span>
             </div>
             <div className="overflow-x-auto">
               <table className="text-xs w-full">

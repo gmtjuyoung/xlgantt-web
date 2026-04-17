@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import { Upload, Download, Palette, Globe, FileSpreadsheet, CalendarClock, BarChart3, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,15 +9,34 @@ import { THEME_PRESETS } from '@/lib/types'
 import { importXLGanttFile } from '@/lib/excel-import'
 import { exportToExcel } from '@/lib/excel-export'
 import { useResourceStore } from '@/stores/resource-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 import { DatePicker } from '@/components/ui/date-picker'
+import { supabase } from '@/lib/supabase'
 
 export function ProjectSettings() {
   const { currentProject: project, updateProject, setProject, setTheme } = useProjectStore()
   const { tasks, dependencies, setTasks, setDependencies } = useTaskStore()
   const { language, setLanguage, ganttOptions, setGanttOptions, resetGanttOptions } = useUIStore()
   const { companies, members, assignments } = useResourceStore()
+  const currentUser = useAuthStore((s) => s.currentUser)
+  const isAdmin = currentUser?.role === 'admin'
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [categories, setCategories] = useState<string[]>([])
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('project_categories')
+        .select('name')
+        .order('name', { ascending: true })
+      if (error) {
+        console.error('카테고리 로드 실패:', error.message)
+        return
+      }
+      if (data) setCategories((data as { name: string }[]).map((c) => c.name))
+    })()
+  }, [])
 
   const handleExport = useCallback(() => {
     if (!project) {
@@ -120,6 +139,40 @@ export function ProjectSettings() {
             <div>
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">프로젝트명</label>
               <Input value={project.name} onChange={(e) => updateProject({ name: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">카테고리</label>
+              {isAdmin ? (
+                <select
+                  value={project.category || ''}
+                  onChange={(e) => updateProject({ category: e.target.value || undefined })}
+                  className="mt-1 w-full h-9 text-sm border border-border rounded-md px-2 bg-background"
+                >
+                  <option value="">카테고리 없음</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="mt-1 h-9 flex items-center px-2 border border-border/40 rounded-md bg-muted/30 text-sm text-muted-foreground">
+                  {project.category || '카테고리 없음'}
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {isAdmin
+                  ? '대시보드에서 카테고리별로 그룹핑됩니다.'
+                  : '카테고리 변경은 관리자만 가능합니다.'}
+              </p>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">설명</label>
+              <textarea
+                value={project.description || ''}
+                onChange={(e) => updateProject({ description: e.target.value || undefined })}
+                placeholder="프로젝트 간략 설명"
+                rows={2}
+                className="mt-1 w-full text-sm border border-border rounded-md px-3 py-2 resize-y outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

@@ -8,6 +8,7 @@ import { useCalendarStore } from '@/stores/calendar-store'
 import { useActivityStore } from '@/stores/activity-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
+import { clampProgress, getEffectiveActualProgress, getEffectivePlannedProgress, resolveStatusDate } from '@/lib/task-progress'
 import { supabase } from '@/lib/supabase'
 import { clipboardManager } from '@/lib/clipboard-manager'
 
@@ -40,6 +41,27 @@ function calcDuration(start?: string, end?: string, calType: CalendarType = 'STD
   return countWorkingDays(parseISO(start), parseISO(end), workDays, holidaySet)
 }
 
+function getProgressWeight(task: Task): number {
+  const w = task.total_workload
+  return typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : 1
+}
+
+function stripOverrideColumns(payload: Record<string, unknown>): Record<string, unknown> {
+  const fallback = { ...payload }
+  delete fallback.planned_progress_override
+  delete fallback.actual_progress_override
+  return fallback
+}
+
+function isMissingOverrideColumnError(error: { message?: string; details?: string; hint?: string; code?: string } | null): boolean {
+  if (!error) return false
+  const text = `${error.code || ''} ${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase()
+  return text.includes('planned_progress_override') ||
+    text.includes('actual_progress_override') ||
+    text.includes('column') && text.includes('does not exist') ||
+    text.includes('pgrst204')
+}
+
 /** 그룹 작업의 날짜/기간/작업량을 자식 기준으로 갱신 */
 function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
   const changedTask = tasks.find((t) => t.id === changedTaskId)
@@ -60,6 +82,7 @@ function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
     (t) => t.id !== parentTask.id && t.wbs_code.startsWith(parentTask.wbs_code + '.')
   )
   const leafChildren = allChildren.filter((t) => !t.is_group)
+  const statusDate = resolveStatusDate(useProjectStore.getState().currentProject?.status_date)
 
   if (allChildren.length === 0) return tasks
 
@@ -76,11 +99,14 @@ function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
   const totalWorkload = leafChildren.reduce((sum, t) => sum + (t.total_workload || 0), 0)
 
   // 진척률: 작업량 가중 평균
-  const weightedProgress = totalWorkload > 0
-    ? leafChildren.reduce((sum, t) => sum + (t.actual_progress * (t.total_workload || 0)), 0) / totalWorkload
-    : leafChildren.length > 0
-      ? leafChildren.reduce((sum, t) => sum + t.actual_progress, 0) / leafChildren.length
-      : 0
+  const totalWeight = leafChildren.reduce((sum, t) => sum + getProgressWeight(t), 0)
+  const weightedActualProgress = totalWeight > 0
+    ? leafChildren.reduce((sum, t) => sum + (getEffectiveActualProgress(t) * getProgressWeight(t)), 0) / totalWeight
+    : 0
+
+  const weightedPlannedProgress = totalWeight > 0
+    ? leafChildren.reduce((sum, t) => sum + (getEffectivePlannedProgress(t, statusDate) * getProgressWeight(t)), 0) / totalWeight
+    : 0
 
   const updated = tasks.map((t) =>
     t.id === parentTask.id
@@ -90,7 +116,8 @@ function rollupGroupDates(tasks: Task[], changedTaskId: string): Task[] {
           planned_end: maxEnd,
           total_duration: duration,
           total_workload: totalWorkload || t.total_workload,
-          actual_progress: weightedProgress,
+          planned_progress: clampProgress(weightedPlannedProgress),
+          actual_progress: clampProgress(weightedActualProgress),
         }
       : t
   )
@@ -125,6 +152,8 @@ function dbToTask(row: Record<string, unknown>): Task {
     deliverables: (row.deliverables as string) || undefined,
     planned_progress: Number(row.planned_progress ?? 0),
     actual_progress: Number(row.actual_progress ?? 0),
+    planned_progress_override: row.planned_progress_override != null ? Number(row.planned_progress_override) : undefined,
+    actual_progress_override: row.actual_progress_override != null ? Number(row.actual_progress_override) : undefined,
     is_milestone: (row.is_milestone as boolean) ?? false,
     parent_id: (row.parent_id as string) || undefined,
     is_collapsed: (row.is_collapsed as boolean) ?? false,
@@ -159,8 +188,10 @@ function taskToDb(t: Task): Record<string, unknown> {
     calendar_type: t.calendar_type,
     resource_count: t.resource_count ?? null,
     deliverables: t.deliverables || null,
-    planned_progress: t.planned_progress,
+    planned_progress: t.planned_progress ?? null,
     actual_progress: t.actual_progress,
+    planned_progress_override: t.planned_progress_override ?? null,
+    actual_progress_override: t.actual_progress_override ?? null,
     is_milestone: t.is_milestone,
     parent_id: t.parent_id || null,
     is_collapsed: t.is_collapsed,
@@ -269,9 +300,51 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (error) {
       console.error('작업 로드 실패:', error.message)
     } else if (data) {
-      const tasks = data.map(dbToTask)
-      // setTasks를 통해 duration 계산 및 롤업 수행
-      get().setTasks(tasks)
+      const rawTasks = data.map(dbToTask)
+
+      // 아카이브된 작업은 재계산에서 제외 (원래 자리 유지)
+      const activeTasks = rawTasks.filter((t) => !t.archived_at)
+      const archivedTasks = rawTasks.filter((t) => t.archived_at)
+
+      // WBS 자동 정합화: DFS 트리 재계산 + 빈 그룹 해제
+      let recalculated = recalculateWBSCodes(activeTasks)
+      recalculated = recalculated.map((task) => {
+        if (task.is_group) {
+          const hasChildren = recalculated.some((t) => t.parent_id === task.id)
+          if (!hasChildren) return { ...task, is_group: false }
+        }
+        return task
+      })
+
+      // 변경된 rows만 추출
+      const changedRows = recalculated.filter((task) => {
+        const original = activeTasks.find((t) => t.id === task.id)
+        if (!original) return false
+        return (
+          original.wbs_code !== task.wbs_code ||
+          original.wbs_level !== task.wbs_level ||
+          original.is_group !== task.is_group ||
+          original.sort_order !== task.sort_order
+        )
+      })
+
+      // 스토어에 반영 (아카이브 포함)
+      get().setTasks([...recalculated, ...archivedTasks])
+
+      // stale한 rows만 DB에 비동기 동기화
+      if (changedRows.length > 0) {
+        console.log(`[WBS auto-cleanup] ${changedRows.length}개 작업 정리`)
+        for (const task of changedRows) {
+          supabase.from('tasks').update({
+            wbs_code: task.wbs_code,
+            wbs_level: task.wbs_level,
+            is_group: task.is_group,
+            sort_order: task.sort_order,
+          }).eq('id', task.id).then(({ error }) => {
+            if (error) console.error('WBS 자동 정리 실패:', error.message)
+          })
+        }
+      }
     }
     set({ isLoading: false })
   },
@@ -289,10 +362,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   setTasks: (inTasks) => {
+    const statusDate = resolveStatusDate(useProjectStore.getState().currentProject?.status_date)
+
     // 기간 자동 계산
     let tasks = inTasks.map((t) => ({
       ...t,
       total_duration: t.total_duration ?? calcDuration(t.planned_start, t.planned_end),
+      planned_progress: getEffectivePlannedProgress(t, statusDate),
+      actual_progress: getEffectiveActualProgress(t),
     }))
 
     // 그룹 작업 롤업: 리프 작업부터 상위로 (높은 wbs_level부터)
@@ -312,15 +389,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const totalWorkload = leafChildren.reduce((sum, t) => sum + (t.total_workload || 0), 0)
 
       // 진척률: 작업량 가중 평균
-      const weightedProgress = totalWorkload > 0
-        ? leafChildren.reduce((sum, t) => sum + (t.actual_progress * (t.total_workload || 0)), 0) / totalWorkload
-        : leafChildren.length > 0
-          ? leafChildren.reduce((sum, t) => sum + t.actual_progress, 0) / leafChildren.length
-          : 0
+      const totalWeight = leafChildren.reduce((sum, t) => sum + getProgressWeight(t), 0)
+      const weightedActualProgress = totalWeight > 0
+        ? leafChildren.reduce((sum, t) => sum + (t.actual_progress * getProgressWeight(t)), 0) / totalWeight
+        : 0
+
+      const weightedPlannedProgress = totalWeight > 0
+        ? leafChildren.reduce((sum, t) => sum + (t.planned_progress * getProgressWeight(t)), 0) / totalWeight
+        : 0
 
       tasks = tasks.map((t) =>
         t.id === group.id
-          ? { ...t, planned_start: minStart, planned_end: maxEnd, total_duration: duration, total_workload: totalWorkload || t.total_workload, actual_progress: weightedProgress }
+          ? {
+              ...t,
+              planned_start: minStart,
+              planned_end: maxEnd,
+              total_duration: duration,
+              total_workload: totalWorkload || t.total_workload,
+              planned_progress: clampProgress(weightedPlannedProgress),
+              actual_progress: clampProgress(weightedActualProgress),
+            }
           : t
       )
     }
@@ -340,35 +428,62 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       details: `작업 '${task.task_name}' 추가`,
     })
     // 서버 저장 (비동기)
-    supabase.from('tasks').insert(taskToDb(task)).then(({ error }) => {
-      if (error) console.error('작업 추가 실패:', error.message)
+    const payload = taskToDb(task)
+    supabase.from('tasks').insert(payload).then(async ({ error }) => {
+      if (!error) return
+      if (isMissingOverrideColumnError(error)) {
+        const fallback = stripOverrideColumns(payload)
+        const { error: retryError } = await supabase.from('tasks').insert(fallback)
+        if (retryError) {
+          console.error('작업 추가(레거시 fallback) 실패:', retryError.message)
+        }
+        return
+      }
+      console.error('작업 추가 실패:', error.message)
     })
   },
 
   updateTask: (taskId, changes) => {
+    const normalizedChanges: Partial<Task> = { ...changes }
+    const hasPlannedOverrideField = Object.prototype.hasOwnProperty.call(changes, 'planned_progress_override')
+    const hasActualOverrideField = Object.prototype.hasOwnProperty.call(changes, 'actual_progress_override')
+
+    if (changes.planned_progress !== undefined && !hasPlannedOverrideField) {
+      normalizedChanges.planned_progress_override = clampProgress(changes.planned_progress)
+    }
+    if (changes.actual_progress !== undefined && !hasActualOverrideField) {
+      normalizedChanges.actual_progress_override = clampProgress(changes.actual_progress)
+    }
+
     const beforeTask = useTaskStore.getState().tasks.find((t) => t.id === taskId)
     pushCurrentSnapshot()
     set((state) => {
+      const statusDate = resolveStatusDate(useProjectStore.getState().currentProject?.status_date)
       // 1. 기본 업데이트 적용
       let tasks = state.tasks.map((t) => {
         if (t.id !== taskId) return t
-        const updated = { ...t, ...changes }
+        const updated = { ...t, ...normalizedChanges }
 
         // 2. 날짜가 변경되면 기간(근무일수) 자동 계산
-        const start = changes.planned_start ?? t.planned_start
-        const end = changes.planned_end ?? t.planned_end
-        if (changes.planned_start !== undefined || changes.planned_end !== undefined) {
+        const start = normalizedChanges.planned_start ?? t.planned_start
+        const end = normalizedChanges.planned_end ?? t.planned_end
+        if (normalizedChanges.planned_start !== undefined || normalizedChanges.planned_end !== undefined) {
           updated.total_duration = calcDuration(start, end)
         }
+
+        updated.planned_progress = getEffectivePlannedProgress(updated, statusDate)
+        updated.actual_progress = getEffectiveActualProgress(updated)
 
         return updated
       })
 
       // 3. 그룹 작업 롤업 (자식의 날짜/작업량 변경 시 부모 갱신)
       const changedTask = tasks.find((t) => t.id === taskId)
-      const needsRollup = changes.planned_start !== undefined ||
-        changes.planned_end !== undefined ||
-        changes.total_workload !== undefined
+      const needsRollup = normalizedChanges.planned_start !== undefined ||
+        normalizedChanges.planned_end !== undefined ||
+        normalizedChanges.total_workload !== undefined ||
+        normalizedChanges.planned_progress_override !== undefined ||
+        normalizedChanges.actual_progress_override !== undefined
       if (changedTask && !changedTask.is_group && needsRollup) {
         tasks = rollupGroupDates(tasks, taskId)
       }
@@ -376,22 +491,31 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       return { tasks }
     })
     // 진척률 변경 시만 로그
-    if (beforeTask && changes.actual_progress !== undefined && changes.actual_progress !== beforeTask.actual_progress) {
+    if (beforeTask && normalizedChanges.actual_progress !== undefined && normalizedChanges.actual_progress !== beforeTask.actual_progress) {
       logTaskActivity({
-        action: changes.actual_progress === 100 ? 'complete' : 'update',
+        action: normalizedChanges.actual_progress === 1 ? 'complete' : 'update',
         targetType: 'task',
         targetId: taskId,
         targetName: beforeTask.task_name,
-        details: `진척률 ${beforeTask.actual_progress ?? 0}% → ${changes.actual_progress}%`,
+        details: `진척률 ${Math.round((beforeTask.actual_progress ?? 0) * 100)}% → ${Math.round((normalizedChanges.actual_progress ?? 0) * 100)}%`,
       })
     }
     // 서버 업데이트 (비동기) - 변경된 필드만 전송
     const dbChanges: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(changes)) {
+    for (const [key, value] of Object.entries(normalizedChanges)) {
       dbChanges[key] = value ?? null
     }
-    supabase.from('tasks').update(dbChanges).eq('id', taskId).then(({ error }) => {
-      if (error) console.error('작업 업데이트 실패:', error.message)
+    supabase.from('tasks').update(dbChanges).eq('id', taskId).then(async ({ error }) => {
+      if (!error) return
+      if (isMissingOverrideColumnError(error)) {
+        const fallback = stripOverrideColumns(dbChanges)
+        const { error: retryError } = await supabase.from('tasks').update(fallback).eq('id', taskId)
+        if (retryError) {
+          console.error('작업 업데이트(레거시 fallback) 실패:', retryError.message)
+        }
+        return
+      }
+      console.error('작업 업데이트 실패:', error.message)
     })
   },
 
@@ -619,21 +743,35 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ tasks, dependencies }),
 
   _updateTaskSilent: (taskId, changes) => {
+    const currentTask = get().tasks.find((t) => t.id === taskId)
+    const dbSafeChanges: Partial<Task> = { ...changes }
+    if (currentTask?.actual_progress_override != null && dbSafeChanges.actual_progress !== undefined) {
+      delete dbSafeChanges.actual_progress
+    }
+
     set((state) => {
+      const statusDate = resolveStatusDate(useProjectStore.getState().currentProject?.status_date)
       let tasks = state.tasks.map((t) => {
         if (t.id !== taskId) return t
-        return { ...t, ...changes }
+        const normalized = { ...dbSafeChanges }
+        if (t.actual_progress_override != null && normalized.actual_progress !== undefined) {
+          delete normalized.actual_progress
+        }
+        const updated = { ...t, ...normalized }
+        updated.planned_progress = getEffectivePlannedProgress(updated, statusDate)
+        updated.actual_progress = getEffectiveActualProgress(updated)
+        return updated
       })
       // 그룹 롤업 (작업량 또는 진척률 변경 시)
       const changedTask = tasks.find((t) => t.id === taskId)
-      if (changedTask && !changedTask.is_group && (changes.total_workload !== undefined || changes.actual_progress !== undefined)) {
+      if (changedTask && !changedTask.is_group && (dbSafeChanges.total_workload !== undefined || dbSafeChanges.actual_progress !== undefined)) {
         tasks = rollupGroupDates(tasks, taskId)
       }
       return { tasks }
     })
     // DB 저장 (비동기)
     const dbChanges: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(changes)) {
+    for (const [key, value] of Object.entries(dbSafeChanges)) {
       dbChanges[key] = value ?? null
     }
     supabase.from('tasks').update(dbChanges).eq('id', taskId).then(({ error }) => {

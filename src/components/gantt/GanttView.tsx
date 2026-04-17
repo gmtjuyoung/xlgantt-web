@@ -15,9 +15,10 @@ export function GanttView() {
   useKeyboard()
   const tasks = useTaskStore((s) => s.tasks)
   const dependencies = useTaskStore((s) => s.dependencies)
+  const setTasks = useTaskStore((s) => s.setTasks)
   const project = useProjectStore((s) => s.currentProject)
   const theme = useProjectStore((s) => s.theme)
-  const { zoomLevel, tableWidth, setTableWidth, tableCollapsed, setTableCollapsed, searchQuery, filterStatus, showArchived } = useUIStore()
+  const { zoomLevel, tableWidth, setTableWidth, tableCollapsed, setTableCollapsed, searchQuery, filterStatus, showArchived, customDateRange } = useUIStore()
 
   const containerRef = useRef<HTMLDivElement>(null)
   const tableScrollRef = useRef<HTMLDivElement>(null)
@@ -32,7 +33,39 @@ export function GanttView() {
   const visibleTasks = useMemo(() => {
     // 아카이브 필터: 기본은 제외, showArchived 시 포함
     const filteredByArchive = showArchived ? tasks : tasks.filter((t) => !t.archived_at)
-    const collapsed = getVisibleTasks(filteredByArchive)
+    let collapsed = getVisibleTasks(filteredByArchive)
+
+    // 기간 필터: customDateRange와 겹치지 않는 작업 제외
+    if (customDateRange) {
+      const rangeStart = customDateRange.start
+      const rangeEnd = customDateRange.end
+      const idsInRange = new Set<string>()
+      for (const task of collapsed) {
+        const taskStart = task.planned_start
+        const taskEnd = task.planned_end
+        // 날짜가 없는 작업(그룹 등)은 자식 기준으로 판단해야 하므로 일단 포함
+        if (!taskStart && !taskEnd) {
+          idsInRange.add(task.id)
+          continue
+        }
+        // overlap 조건: task.end >= rangeStart && task.start <= rangeEnd
+        const effectiveStart = taskStart || taskEnd || ''
+        const effectiveEnd = taskEnd || taskStart || ''
+        if (effectiveEnd >= rangeStart && effectiveStart <= rangeEnd) {
+          idsInRange.add(task.id)
+        }
+      }
+      // 조상 노드 포함 (트리 구조 유지)
+      const withAncestors = new Set<string>(idsInRange)
+      for (const id of idsInRange) {
+        let current = collapsed.find((t) => t.id === id)
+        while (current?.parent_id) {
+          withAncestors.add(current.parent_id)
+          current = collapsed.find((t) => t.id === current!.parent_id)
+        }
+      }
+      collapsed = collapsed.filter((t) => withAncestors.has(t.id))
+    }
 
     // No filter active — return as-is
     if (!searchQuery && filterStatus === 'all') return collapsed
@@ -86,16 +119,20 @@ export function GanttView() {
     }
 
     return collapsed.filter((t) => visibleIds.has(t.id))
-  }, [tasks, searchQuery, filterStatus, showArchived, project?.status_date])
+  }, [tasks, searchQuery, filterStatus, showArchived, project?.status_date, customDateRange])
 
   const scale = useMemo(() => {
     if (!project) return null
+    // customDateRange가 있으면 그 기간으로 (패딩 0), 없으면 프로젝트 전체 기간
+    const start = customDateRange?.start || project.start_date
+    const end = customDateRange?.end || project.end_date
     return createGanttScale(
-      new Date(project.start_date),
-      new Date(project.end_date),
-      zoomLevel
+      new Date(start),
+      new Date(end),
+      zoomLevel,
+      customDateRange ? 0 : undefined
     )
-  }, [project, zoomLevel])
+  }, [project, zoomLevel, customDateRange])
 
   // Auto-scroll to project start date on mount
   useEffect(() => {
@@ -104,6 +141,14 @@ export function GanttView() {
       chartScrollRef.current.scrollLeft = Math.max(0, startX - 50)
     }
   }, [scale, project])
+
+  // 기준일(status_date) 변경 시 계획 진척률 재계산
+  useEffect(() => {
+    const current = useTaskStore.getState().tasks
+    if (current.length > 0) {
+      setTasks([...current])
+    }
+  }, [project?.status_date, setTasks])
 
   // Sync vertical scroll between table and chart
   const handleTableScroll = useCallback(() => {
@@ -208,10 +253,12 @@ export function GanttView() {
 
         {/* Resize Handle with Toggle Button */}
         <div
-          className="relative w-[6px] bg-transparent hover:bg-primary/20 cursor-col-resize flex-shrink-0 transition-all duration-150 group"
+          className="relative w-[6px] bg-transparent hover:bg-primary/10 cursor-col-resize flex-shrink-0 transition-all duration-150 group"
           onPointerDown={!tableCollapsed ? handleResizeStart : undefined}
           style={{ cursor: tableCollapsed ? 'default' : 'col-resize' }}
         >
+          {/* Visible divider line (2px, slate-400 → hover primary) */}
+          <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[2px] bg-slate-400 dark:bg-slate-600 group-hover:bg-primary transition-colors pointer-events-none" />
           {/* Toggle Button */}
           <button
             onClick={(e) => {
