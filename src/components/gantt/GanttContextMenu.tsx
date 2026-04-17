@@ -6,6 +6,8 @@ import {
   Trash2,
   ArrowUpFromLine,
   ArrowDownFromLine,
+  Copy,
+  ClipboardPaste,
 } from 'lucide-react'
 import { useTaskStore } from '@/stores/task-store'
 import { useProjectStore } from '@/stores/project-store'
@@ -24,7 +26,7 @@ interface GanttContextMenuProps {
 
 export function GanttContextMenu({ menu, onClose, onOpenEdit }: GanttContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
-  const { tasks, addTask, deleteTask, updateTask, setTasks, selectTask } = useTaskStore()
+  const { tasks, addTask, deleteTask, updateTask, setTasks, selectTask, copiedTask, copyTask, pasteTask } = useTaskStore()
   const project = useProjectStore((s) => s.currentProject)
 
   const task = tasks.find((t) => t.id === menu.taskId)
@@ -200,6 +202,21 @@ export function GanttContextMenu({ menu, onClose, onOpenEdit }: GanttContextMenu
     onClose()
   }, [task, tasks, updateTask, recalcWBS, onClose])
 
+  // 작업 복사
+  const handleCopy = useCallback(() => {
+    if (!task) return
+    copyTask(task.id)
+    onClose()
+  }, [task, copyTask, onClose])
+
+  // 아래에 붙여넣기
+  const handlePaste = useCallback(() => {
+    if (!task) return
+    pasteTask(task.id, 'below')
+    recalcWBS()
+    onClose()
+  }, [task, pasteTask, recalcWBS, onClose])
+
   // 작업 삭제
   const handleDelete = useCallback(() => {
     if (!task) return
@@ -226,11 +243,17 @@ export function GanttContextMenu({ menu, onClose, onOpenEdit }: GanttContextMenu
       } else if (e.key === 'Enter') {
         e.preventDefault()
         handleEdit()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault()
+        handleCopy()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault()
+        handlePaste()
       }
     }
     document.addEventListener('keydown', handleShortcut, true)
     return () => document.removeEventListener('keydown', handleShortcut, true)
-  }, [handleIndent, handleOutdent, handleDelete, handleEdit])
+  }, [handleIndent, handleOutdent, handleDelete, handleEdit, handleCopy, handlePaste])
 
   if (!task) return null
 
@@ -249,6 +272,12 @@ export function GanttContextMenu({ menu, onClose, onOpenEdit }: GanttContextMenu
     >
       {/* 작업 편집 */}
       <MenuItem icon={FileEdit} label="작업 편집" shortcut="더블클릭" onClick={handleEdit} />
+
+      <MenuSeparator />
+
+      {/* 복사/붙여넣기 */}
+      <MenuItem icon={Copy} label="복사" shortcut="Ctrl+C" onClick={handleCopy} />
+      <MenuItem icon={ClipboardPaste} label="붙여넣기" shortcut="Ctrl+V" onClick={handlePaste} disabled={!copiedTask} />
 
       <MenuSeparator />
 

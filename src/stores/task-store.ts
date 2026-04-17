@@ -9,6 +9,7 @@ import { useActivityStore } from '@/stores/activity-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
 import { supabase } from '@/lib/supabase'
+import { clipboardManager } from '@/lib/clipboard-manager'
 
 function logTaskActivity(params: {
   action: 'create' | 'update' | 'delete' | 'complete' | 'status_change'
@@ -236,6 +237,11 @@ interface TaskState {
 
   /** 자동 계산 전용 - undo 스냅샷 없이 작업 업데이트 (DB 저장은 수행) */
   _updateTaskSilent: (taskId: string, changes: Partial<Task>) => void
+
+  // Clipboard (copy & paste)
+  copiedTask: Task | null
+  copyTask: (taskId: string) => void
+  pasteTask: (referenceTaskId: string, position: 'above' | 'below') => void
 }
 
 /** 현재 tasks/dependencies 스냅샷을 undo 스택에 저장 */
@@ -251,6 +257,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   lastSelectedId: null,
   editingCell: null,
   isLoading: false,
+  copiedTask: null,
 
   loadTasks: async (projectId) => {
     set({ isLoading: true })
@@ -632,5 +639,67 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     supabase.from('tasks').update(dbChanges).eq('id', taskId).then(({ error }) => {
       if (error) console.error('작업 자동 업데이트 실패:', error.message)
     })
+  },
+
+  // 작업 복사: 클립보드와 스토어 상태에 복사본 저장
+  copyTask: (taskId) => {
+    const task = get().tasks.find((t) => t.id === taskId)
+    if (!task) {
+      console.warn('[copyTask] 작업을 찾을 수 없습니다:', taskId)
+      return
+    }
+    clipboardManager.copy(task)
+    set({ copiedTask: task })
+    console.log('[copyTask] 작업 복사 완료:', task.task_name)
+  },
+
+  // 작업 붙여넣기: referenceTaskId 기준으로 위/아래에 복사된 작업 생성
+  pasteTask: (referenceTaskId, position) => {
+    const copiedData = clipboardManager.paste()
+    if (!copiedData) {
+      console.warn('[pasteTask] 클립보드에 복사된 작업이 없습니다')
+      return
+    }
+    const project = useProjectStore.getState().currentProject
+    if (!project) {
+      console.warn('[pasteTask] 현재 프로젝트를 찾을 수 없습니다')
+      return
+    }
+    const tasks = get().tasks
+    const refTask = tasks.find((t) => t.id === referenceTaskId)
+    if (!refTask) {
+      console.warn('[pasteTask] 기준 작업을 찾을 수 없습니다:', referenceTaskId)
+      return
+    }
+
+    const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
+    const index = sorted.findIndex((t) => t.id === referenceTaskId)
+
+    let newSortOrder: number
+    if (position === 'above') {
+      const prevTask = index > 0 ? sorted[index - 1] : null
+      newSortOrder = prevTask
+        ? Math.floor((prevTask.sort_order + refTask.sort_order) / 2)
+        : refTask.sort_order - 1000
+    } else {
+      const nextTask = index < sorted.length - 1 ? sorted[index + 1] : null
+      newSortOrder = nextTask
+        ? Math.floor((refTask.sort_order + nextTask.sort_order) / 2)
+        : refTask.sort_order + 1000
+    }
+
+    const newTask: Task = {
+      ...copiedData,
+      id: crypto.randomUUID(),
+      project_id: project.id,
+      sort_order: newSortOrder,
+      wbs_code: '', // recalcWBS()가 붙여넣기 후 호출되어 재계산됩니다
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    get().addTask(newTask)
+    get().selectTask(newTask.id)
+    console.log('[pasteTask] 작업 붙여넣기 완료:', newTask.task_name, '→', position === 'above' ? '위' : '아래')
   },
 }))
