@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useTaskStore } from '@/stores/task-store'
 import { useProjectStore } from '@/stores/project-store'
+import { findIndentParent } from '@/lib/wbs'
 
 export interface ContextMenuState {
   taskId: string
@@ -169,18 +170,15 @@ export function GanttContextMenu({ menu, onClose, onOpenEdit }: GanttContextMenu
   // 들여쓰기
   const handleIndent = useCallback(() => {
     if (!task || task.wbs_level >= 6) return
-    const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
-    const index = sorted.findIndex((t) => t.id === task.id)
-    if (index <= 0) return
-
-    const prevTask = sorted[index - 1]
+    const parentTask = findIndentParent(tasks, task.id)
+    if (!parentTask) return
 
     updateTask(task.id, {
       wbs_level: task.wbs_level + 1,
-      parent_id: prevTask.id,
+      parent_id: parentTask.id,
     })
-    if (!prevTask.is_group) {
-      updateTask(prevTask.id, { is_group: true })
+    if (!parentTask.is_group) {
+      updateTask(parentTask.id, { is_group: true })
     }
     recalcWBS()
     onClose()
@@ -257,11 +255,7 @@ export function GanttContextMenu({ menu, onClose, onOpenEdit }: GanttContextMenu
 
   if (!task) return null
 
-  const canIndent = task.wbs_level < 6 && (() => {
-    const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order)
-    const index = sorted.findIndex((t) => t.id === task.id)
-    return index > 0
-  })()
+  const canIndent = task.wbs_level < 6 && !!findIndentParent(tasks, task.id)
   const canOutdent = task.wbs_level > 1
 
   return (

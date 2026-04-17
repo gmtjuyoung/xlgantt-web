@@ -9,13 +9,12 @@ import {
   Link,
   ZoomIn,
   ZoomOut,
+  CalendarRange,
   Settings,
   Users,
   UserCheck,
-  TrendingUp,
   ClipboardList,
   PieChart,
-  Activity,
   Clock,
   AlertTriangle,
   X,
@@ -40,6 +39,7 @@ import { exportToExcel } from '@/lib/excel-export'
 import type { ZoomLevel } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { DatePicker } from '@/components/ui/date-picker'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ProjectSwitcher } from '@/components/layout/ProjectSwitcher'
 import { useNavigate } from 'react-router-dom'
 
@@ -55,8 +55,6 @@ const TAB_GROUPS: TabGroup[] = [
   ]},
   { tabs: [
     { key: 'progress', label: '진척현황', icon: <PieChart className="h-3.5 w-3.5" /> },
-    { key: 'analysis', label: '분석', icon: <Activity className="h-3.5 w-3.5" /> },
-    { key: 'workload', label: '작업량', icon: <TrendingUp className="h-3.5 w-3.5" />, pmOrAdmin: true },
   ]},
   { tabs: [
     { key: 'calendar', label: '달력', icon: <Calendar className="h-3.5 w-3.5" />, pmOrAdmin: true },
@@ -75,7 +73,7 @@ export function Header() {
   const { currentProject: project, updateProject } = useProjectStore()
   const { tasks, dependencies } = useTaskStore()
   const { companies, members, assignments, taskDetails } = useResourceStore()
-  const { activeView, setActiveView, zoomLevel, setZoomLevel, linkMode, toggleLinkMode, linkSourceTaskId } =
+  const { activeView, setActiveView, zoomLevel, setZoomLevel, linkMode, toggleLinkMode, linkSourceTaskId, customDateRange, setCustomDateRange } =
     useUIStore()
 
   const isAdmin = currentUser?.role === 'admin'
@@ -104,6 +102,13 @@ export function Header() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [bellOpen])
+
+  // 기존 저장값 호환: 통합된 화면에서는 analysis/workload를 progress로 통일
+  useEffect(() => {
+    if (activeView === 'analysis' || activeView === 'workload') {
+      setActiveView('progress')
+    }
+  }, [activeView, setActiveView])
 
   // 현재 사용자 매칭 멤버
   const myMember = useMemo(() => {
@@ -152,8 +157,31 @@ export function Header() {
     return items
   }, [myMember, myTaskIds, taskDetails, tasks, project?.status_date])
 
-  // 읽은 알림 ID 추적
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  // 읽은 알림 ID 추적 (사용자별 localStorage 영속)
+  const dismissedStorageKey = currentUser?.id ? `xlgantt-dismissed-notifications-${currentUser.id}` : null
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    if (!dismissedStorageKey) return new Set()
+    try {
+      const raw = localStorage.getItem(dismissedStorageKey)
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  // dismissedIds 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (!dismissedStorageKey) return
+    try {
+      localStorage.setItem(dismissedStorageKey, JSON.stringify(Array.from(dismissedIds)))
+    } catch {
+      // ignore
+    }
+  }, [dismissedIds, dismissedStorageKey])
+
+  // (이전에 stale ID 정리 로직이 있었으나 초기 렌더 타이밍 이슈로 dismissedIds를 전부 날려버려 제거함.
+  //  dismissedIds는 영속적으로 누적되며, localStorage 크기 부담 없음.)
+
   const activeNotifications = notifications.filter((n) => !dismissedIds.has(n.id))
   const bellCount = activeNotifications.length
 
@@ -161,6 +189,11 @@ export function Header() {
     const newLevel = Math.max(1, Math.min(3, zoomLevel + delta)) as ZoomLevel
     setZoomLevel(newLevel)
   }
+
+  // 기간 필터 다이얼로그 상태
+  const [rangeDialogOpen, setRangeDialogOpen] = useState(false)
+  const [rangeStart, setRangeStart] = useState('')
+  const [rangeEnd, setRangeEnd] = useState('')
 
   const handleExport = () => {
     if (!project) return
@@ -172,20 +205,21 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-12 items-center border-b border-border/40 bg-background px-4 gap-3">
+    <>
+    <header className="workspace-header">
       {/* Home + Logo + Project Switcher */}
       <div className="flex items-center gap-2 mr-2 flex-shrink-0">
         <button
           onClick={() => navigate('/projects')}
-          className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm hover:opacity-80 transition-opacity"
+          className="w-7 h-7 rounded-md overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           title="프로젝트 목록으로"
         >
-          <BarChart3 className="h-3.5 w-3.5 text-primary-foreground" />
+          <img src="/logo.png" alt="GMT" className="w-7 h-7 object-contain" />
         </button>
         <ProjectSwitcher />
       </div>
 
-      <div className="w-px h-6 bg-border/40 flex-shrink-0" />
+      <div className="chrome-divider h-6" />
 
       {/* View Tabs - Grouped (role-based) */}
       <nav className="hidden md:flex items-center">
@@ -194,23 +228,15 @@ export function Header() {
           if (visibleTabs.length === 0) return null
           return (
             <div key={gi} className="flex items-center">
-              {gi > 0 && <div className="w-px h-4 bg-border/40 mx-1" />}
+              {gi > 0 && <div className="w-px h-4 bg-slate-300/90 mx-1" />}
               {visibleTabs.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveView(tab.key)}
-                  className={cn(
-                    "relative flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] font-medium rounded-md transition-all",
-                    activeView === tab.key
-                      ? "text-primary bg-primary/8"
-                      : "text-muted-foreground/70 hover:text-foreground hover:bg-accent/50"
-                  )}
+                  className={cn('chrome-pill', activeView === tab.key ? 'chrome-pill--active' : '')}
                 >
                   {tab.icon}
                   <span>{tab.label}</span>
-                  {activeView === tab.key && (
-                    <span className="absolute -bottom-[9px] left-2 right-2 h-[2px] bg-primary rounded-full" />
-                  )}
                 </button>
               ))}
             </div>
@@ -221,7 +247,7 @@ export function Header() {
       {/* Mobile view selector */}
       <div className="md:hidden">
         <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm">
+          <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
             {allVisibleTabs.find((t) => t.key === activeView)?.label || '메뉴'}
             <ChevronDown className="ml-1 h-3 w-3" />
           </DropdownMenuTrigger>
@@ -244,7 +270,7 @@ export function Header() {
             key={tab.key}
             variant={activeView === tab.key ? 'default' : 'ghost'}
             size="icon"
-            className="h-7 w-7"
+            className="chrome-icon-btn"
             onClick={() => setActiveView(tab.key)}
             title={tab.title}
           >
@@ -253,7 +279,7 @@ export function Header() {
         ))}
       </div>
 
-      <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+      <div className="chrome-divider" />
 
       {/* Status Date */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -268,7 +294,7 @@ export function Header() {
         {project?.status_date && (
           <button
             onClick={() => updateProject({ status_date: undefined })}
-            className="p-0.5 rounded hover:bg-red-50 text-muted-foreground/50 hover:text-red-500 transition-colors"
+            className="p-0.5 rounded hover:bg-red-50 text-muted-foreground/50 hover:text-red-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             title="기준일 해제"
           >
             <X className="h-3.5 w-3.5" />
@@ -276,19 +302,19 @@ export function Header() {
         )}
       </div>
 
-      <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+      <div className="chrome-divider" />
 
       {/* Export */}
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleExport} title="엑셀 내보내기">
+      <Button variant="ghost" size="icon" className="chrome-icon-btn" onClick={handleExport} title="엑셀 내보내기">
         <Download className="h-3.5 w-3.5" />
       </Button>
 
       {/* Notification Bell */}
-      <div className="relative flex-shrink-0" ref={bellRef}>
+      <div className="relative z-50 flex-shrink-0" ref={bellRef}>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 relative"
+          className="chrome-icon-btn relative"
           onClick={() => setBellOpen((v) => !v)}
           title="알림"
         >
@@ -300,7 +326,7 @@ export function Header() {
           )}
         </Button>
         {bellOpen && (
-          <div className="absolute right-0 top-9 w-72 bg-background border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+          <div className="absolute right-0 top-9 w-72 chrome-popover z-[70]">
             <div className="px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between">
               <div>
                 <span className="text-xs font-semibold">알림</span>
@@ -308,7 +334,7 @@ export function Header() {
               </div>
               {bellCount > 0 && (
                 <button
-                  className="text-[10px] text-muted-foreground hover:text-primary"
+                  className="text-[10px] text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                   onClick={() => setDismissedIds(new Set(notifications.map((n) => n.id)))}
                 >
                   모두 읽음
@@ -328,7 +354,7 @@ export function Header() {
                     {n.type === 'delayed_task' && <Clock className="h-3 w-3 text-orange-500 mt-0.5 flex-shrink-0" />}
                     <span className={cn('text-[11px] flex-1', n.color)}>{n.text}</span>
                     <button
-                      className="text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover/noti:opacity-100 flex-shrink-0"
+                      className="text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover/noti:opacity-100 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                       onClick={(e) => { e.stopPropagation(); setDismissedIds((prev) => new Set([...prev, n.id])) }}
                     >
                       <X className="h-3 w-3" />
@@ -339,7 +365,7 @@ export function Header() {
             </div>
             <div className="px-3 py-2 border-t border-border/40">
               <button
-                className="w-full text-center text-xs font-medium text-primary hover:underline"
+                className="w-full text-center text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
                 onClick={() => {
                   setActiveView('mytasks')
                   setBellOpen(false)
@@ -352,26 +378,55 @@ export function Header() {
         )}
       </div>
 
-      <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+      <div className="chrome-divider" />
 
-      {/* Zoom + Link */}
+      {/* Zoom + Date Range + Link */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleZoom(-1)}>
+        <Button variant="ghost" size="icon" className="chrome-icon-btn" onClick={() => handleZoom(-1)} title="축소">
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
         <span className="text-xs font-medium text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5 min-w-[24px] text-center select-none">
           {zoomLevel === 1 ? '일' : zoomLevel === 2 ? '주' : '월'}
         </span>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleZoom(1)}>
+        <Button variant="ghost" size="icon" className="chrome-icon-btn" onClick={() => handleZoom(1)} title="확대">
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
 
-        <div className="w-px h-4 bg-border/30 mx-0.5" />
+        {/* 기간 필터 */}
+        <Button
+          variant={customDateRange ? 'default' : 'ghost'}
+          size="sm"
+          className={cn('h-7 px-2 text-xs gap-1 ml-0.5', customDateRange && 'bg-primary text-primary-foreground')}
+          onClick={() => {
+            setRangeStart(customDateRange?.start || project?.start_date || '')
+            setRangeEnd(customDateRange?.end || project?.end_date || '')
+            setRangeDialogOpen(true)
+          }}
+          title={customDateRange ? `기간: ${customDateRange.start} ~ ${customDateRange.end}` : '기간으로 보기'}
+        >
+          <CalendarRange className="h-3.5 w-3.5" />
+          {customDateRange && (
+            <>
+              <span className="tabular-nums text-[10px]">
+                {customDateRange.start.slice(5)}~{customDateRange.end.slice(5)}
+              </span>
+              <X
+                className="h-3 w-3 hover:bg-primary-foreground/20 rounded-sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setCustomDateRange(null)
+                }}
+              />
+            </>
+          )}
+        </Button>
+
+        <div className="w-px h-4 bg-slate-300/90 mx-0.5" />
 
         <Button
           variant={linkMode ? 'default' : 'ghost'}
           size="icon"
-          className={cn("h-7 w-7", linkMode && "ring-2 ring-orange-400 ring-offset-1")}
+          className={cn("chrome-icon-btn", linkMode && "ring-2 ring-orange-400 ring-offset-1")}
           onClick={toggleLinkMode}
           title="의존관계 연결 모드"
         >
@@ -387,7 +442,7 @@ export function Header() {
       {/* User Menu */}
       {currentUser && (
         <>
-          <div className="w-px h-5 bg-border/30 flex-shrink-0" />
+          <div className="chrome-divider" />
           <DropdownMenu>
             <DropdownMenuTrigger>
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 flex-shrink-0 px-2">
@@ -421,5 +476,56 @@ export function Header() {
         </>
       )}
     </header>
+
+    {/* 기간 필터 다이얼로그 */}
+    <Dialog open={rangeDialogOpen} onOpenChange={setRangeDialogOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-base flex items-center gap-2">
+            <CalendarRange className="h-4 w-4 text-primary" />
+            기간으로 보기
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 mt-2">
+          <p className="text-xs text-muted-foreground">
+            차트에 표시할 시작일과 종료일을 선택하세요. 설정 후 버튼이 강조되고, X로 해제할 수 있습니다.
+          </p>
+          <div>
+            <label className="block text-xs font-medium mb-1">시작일</label>
+            <DatePicker value={rangeStart} onChange={setRangeStart} placeholder="시작일 선택" className="h-9" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">종료일</label>
+            <DatePicker value={rangeEnd} onChange={setRangeEnd} placeholder="종료일 선택" className="h-9" />
+          </div>
+          <div className="flex justify-between gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setCustomDateRange(null); setRangeDialogOpen(false) }}
+              disabled={!customDateRange}
+            >
+              해제
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setRangeDialogOpen(false)}>취소</Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!rangeStart || !rangeEnd) { alert('시작일과 종료일을 모두 선택해주세요.'); return }
+                  if (rangeStart > rangeEnd) { alert('시작일은 종료일보다 이전이어야 합니다.'); return }
+                  setCustomDateRange({ start: rangeStart, end: rangeEnd })
+                  setRangeDialogOpen(false)
+                }}
+                disabled={!rangeStart || !rangeEnd}
+              >
+                적용
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

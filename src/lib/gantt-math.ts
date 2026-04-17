@@ -24,14 +24,20 @@ export function createGanttScale(
   zoomLevel: ZoomLevel,
   paddingDays?: number
 ): GanttScale {
-  // 줌 레벨에 따라 패딩 조정 (월별은 넉넉하게)
-  const pad = paddingDays ?? (zoomLevel === 3 ? 45 : zoomLevel === 2 ? 21 : 14)
-  const startDate = addDays(startOfWeek(projectStart, { weekStartsOn: 1 }), -pad)
-  const endDate = addDays(projectEnd, pad + 14)
+  // paddingDays === 0 이면 입력 날짜를 exact하게 사용 (커스텀 기간 필터용)
+  // undefined/양수면 줌 레벨에 따라 넉넉하게 패딩
+  const isExact = paddingDays === 0
+  const pad = isExact ? 0 : (paddingDays ?? (zoomLevel === 3 ? 45 : zoomLevel === 2 ? 21 : 14))
+  const startDate = isExact
+    ? startOfDay(projectStart)
+    : addDays(startOfWeek(projectStart, { weekStartsOn: 1 }), -pad)
+  const endDate = isExact
+    ? startOfDay(projectEnd)
+    : addDays(projectEnd, pad + 14)
   const { pixelsPerDay } = ZOOM_CONFIG[zoomLevel]
   const totalDays = differenceInCalendarDays(endDate, startDate)
-  // 우측 여백: 작업명 표시 공간 확보 (최소 200px)
-  const totalWidth = totalDays * pixelsPerDay + 200
+  // 우측 여백: 작업명 표시 공간 확보 (최소 200px). 커스텀 기간일 때는 최소화
+  const totalWidth = totalDays * pixelsPerDay + (isExact ? 40 : 200)
 
   return { startDate, endDate, pixelsPerDay, totalWidth }
 }
@@ -66,8 +72,14 @@ export function taskToBarRect(
   const start = new Date(task.planned_start)
   const end = new Date(task.planned_end)
 
-  const x = dateToX(start, scale)
-  const endX = dateToX(addDays(end, 1), scale) // +1 because end date is inclusive
+  const rawX = dateToX(start, scale)
+  const rawEndX = dateToX(addDays(end, 1), scale) // +1 because end date is inclusive
+  // scale 밖으로 나가는 부분 클리핑 (커스텀 기간 필터 사용 시 시각적으로 잘림)
+  const scaleMaxX = scale.totalWidth
+  const x = Math.max(0, rawX)
+  const endX = Math.min(scaleMaxX, rawEndX)
+  // 완전히 scale 밖이면 null (visibleTasks 필터로 거의 안 옴)
+  if (endX <= 0 || rawX >= scaleMaxX) return null
   const width = Math.max(endX - x, task.is_milestone ? 16 : 4)
 
   return {
@@ -92,8 +104,13 @@ export function taskToActualBarRect(
   const start = new Date(task.actual_start)
   const end = task.actual_end ? new Date(task.actual_end) : new Date()
 
-  const x = dateToX(start, scale)
-  const endX = dateToX(addDays(end, 1), scale)
+  const rawX = dateToX(start, scale)
+  const rawEndX = dateToX(addDays(end, 1), scale)
+  // scale 밖 클리핑
+  const scaleMaxX = scale.totalWidth
+  const x = Math.max(0, rawX)
+  const endX = Math.min(scaleMaxX, rawEndX)
+  if (endX <= 0 || rawX >= scaleMaxX) return null
   const width = Math.max(endX - x, 4)
 
   return {

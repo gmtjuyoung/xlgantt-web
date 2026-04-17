@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   CheckSquare,
   Square,
@@ -13,6 +13,9 @@ import {
   ExternalLink,
   Plus,
   Trash2,
+  List,
+  LayoutGrid,
+  ArrowUpDown,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { Input } from '@/components/ui/input'
@@ -117,6 +120,7 @@ const CUSTOM_COLOR_MAP: Record<string, {
 }
 
 const AVAILABLE_COLORS = ['purple', 'pink', 'orange', 'red', 'teal', 'indigo', 'cyan']
+const MYTASKS_VIEW_MODE_KEY = 'xlgantt:mytasks:viewMode'
 
 function getStatusColors(status: string, customStatuses: CustomStatus[]) {
   if (DEFAULT_STATUS_COLORS[status]) return DEFAULT_STATUS_COLORS[status]
@@ -143,6 +147,13 @@ export function MyTasksDashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'kanban'
+    const saved = window.localStorage.getItem(MYTASKS_VIEW_MODE_KEY)
+    return saved === 'list' || saved === 'kanban' ? saved : 'kanban'
+  })
+  const [sortBy, setSortBy] = useState<'wbs' | 'name' | 'type' | 'status' | 'due' | 'progress'>('wbs')
+  const [sortAsc, setSortAsc] = useState(true)
 
   // Drag & Drop state
   const [dragCardId, setDragCardId] = useState<string | null>(null)
@@ -152,6 +163,11 @@ export function MyTasksDashboard() {
   const [showAddStatus, setShowAddStatus] = useState(false)
   const [newStatusLabel, setNewStatusLabel] = useState('')
   const [newStatusColor, setNewStatusColor] = useState('purple')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(MYTASKS_VIEW_MODE_KEY, viewMode)
+  }, [viewMode])
 
   // 현재 프로젝트의 커스텀 상태
   const projectCustomStatuses = useMemo(() => {
@@ -293,6 +309,40 @@ export function MyTasksDashboard() {
     if (p > 0) return 'in_progress'
     return 'todo'
   }, [])
+
+  const compareWbs = useCallback((a: string, b: string) => {
+    const pa = (a || '').split('.').map(Number)
+    const pb = (b || '').split('.').map(Number)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] ?? 0
+      const nb = pb[i] ?? 0
+      if (na !== nb) return na - nb
+    }
+    return 0
+  }, [])
+
+  const getCardTitle = useCallback((card: MyCard) => {
+    return card.type === 'detail' ? card.detail.title : card.task.task_name
+  }, [])
+
+  const getCardDueDate = useCallback((card: MyCard) => {
+    return card.type === 'detail' ? card.detail.due_date : card.task.planned_end
+  }, [])
+
+  const sortedListCards = useMemo(() => {
+    const rows = [...filteredCards]
+    rows.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'wbs') cmp = compareWbs(a.task.wbs_code, b.task.wbs_code)
+      else if (sortBy === 'name') cmp = getCardTitle(a).localeCompare(getCardTitle(b), 'ko')
+      else if (sortBy === 'type') cmp = a.type.localeCompare(b.type)
+      else if (sortBy === 'status') cmp = getCardStatus(a).localeCompare(getCardStatus(b))
+      else if (sortBy === 'due') cmp = (getCardDueDate(a) || '9999-12-31').localeCompare(getCardDueDate(b) || '9999-12-31')
+      else if (sortBy === 'progress') cmp = (a.task.actual_progress || 0) - (b.task.actual_progress || 0)
+      return sortAsc ? cmp : -cmp
+    })
+    return rows
+  }, [filteredCards, sortBy, sortAsc, compareWbs, getCardTitle, getCardDueDate, getCardStatus])
 
   // 상태별 그룹핑 (커스텀 상태 포함)
   const grouped = useMemo(() => {
@@ -462,6 +512,7 @@ export function MyTasksDashboard() {
         draggable="true"
         onDragStart={(e) => handleDragStart(e, card)}
         onDragEnd={handleDragEnd}
+        onClick={() => setCardDetailId(detail.id)}
         className={cn(
           'rounded-lg border border-border/40 border-l-[3px] shadow-sm transition-all hover:shadow-md cursor-pointer',
           colors.bg,
@@ -472,8 +523,9 @@ export function MyTasksDashboard() {
       >
         {/* 소속 작업명 + 상세 열기 */}
         <div className="px-3 pt-2 pb-0.5 flex items-center gap-1">
-          <span className="text-[11px] text-muted-foreground font-medium truncate flex-1">
-            {task.wbs_code} {task.task_name}
+          <span className="text-[11px] text-muted-foreground font-medium truncate flex-1 flex items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0 text-[9px] font-semibold text-blue-700">세부</span>
+            <span className="truncate">{task.wbs_code} {task.task_name}</span>
           </span>
           <button
             className="flex-shrink-0 text-muted-foreground/40 hover:text-primary transition-colors"
@@ -500,7 +552,7 @@ export function MyTasksDashboard() {
             )}
           </button>
 
-          <div className="flex-1 min-w-0" onClick={() => setCardDetailId(detail.id)}>
+          <div className="flex-1 min-w-0">
             <span
               className={cn(
                 'text-sm font-semibold leading-snug text-foreground hover:text-primary/80 transition-colors',
@@ -610,8 +662,9 @@ export function MyTasksDashboard() {
     return (
       <div
         key={`task-${task.id}`}
+        onClick={() => setEditTaskId(task.id)}
         className={cn(
-          'rounded-lg border border-border/40 border-l-[3px] shadow-sm transition-all hover:shadow-md',
+          'rounded-lg border border-border/40 border-l-[3px] shadow-sm transition-all hover:shadow-md cursor-pointer',
           colors.bg,
           colors.border,
           overdue && 'ring-1 ring-red-300 border-l-red-500'
@@ -628,7 +681,10 @@ export function MyTasksDashboard() {
           </button>
         </div>
         <div className="px-3 pb-1.5">
-          <span className="text-sm font-semibold text-foreground">{task.task_name}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0 text-[9px] font-semibold text-violet-700">WBS</span>
+            <span className="text-sm font-semibold text-foreground">{task.task_name}</span>
+          </div>
         </div>
         <div className="px-3 pb-2 flex items-center gap-2">
           <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -708,7 +764,7 @@ export function MyTasksDashboard() {
   const visibleStatuses = allStatuses.filter((s) => !(hideDone && s.key === 'done'))
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full w-[96%] lg:w-[94%] 2xl:w-[90%] mx-auto px-3 md:px-4 lg:px-5 flex flex-col overflow-hidden">
       {/* 상단 요약 + 검색/필터 */}
       <div className="flex-shrink-0 px-4 py-2.5 border-b border-border/30 bg-background space-y-2">
         <div className="flex items-center gap-4">
@@ -724,6 +780,22 @@ export function MyTasksDashboard() {
               <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progressPercent}%` }} />
             </div>
             <span className="text-xs font-medium text-primary tabular-nums">{progressPercent}%</span>
+            <div className="ml-2 flex items-center gap-1 rounded-md border border-border/50 p-0.5">
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={cn('h-6 w-6 rounded flex items-center justify-center', viewMode === 'kanban' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                title="칸반 보기"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={cn('h-6 w-6 rounded flex items-center justify-center', viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                title="리스트 보기"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
         {/* 검색 + 기간 + 완료숨기기 + 상태추가 */}
@@ -807,24 +879,68 @@ export function MyTasksDashboard() {
         )}
       </div>
 
-      {/* 칸반 컬럼 */}
+      {/* 본문 */}
       <div className="flex-1 overflow-auto p-4">
-        <div
-          className="grid grid-cols-1 gap-4 h-full"
-          style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}
-        >
-          {visibleStatuses.map((s) => {
-            const isCustom = !DEFAULT_STATUS_LABELS[s.key]
-            return renderColumn(
-              s.label,
-              s.key,
-              grouped[s.key] || [],
-              grouped[s.key]?.length || 0,
-              isCustom,
-              isCustom ? s.key : undefined,
-            )
-          })}
-        </div>
+        {viewMode === 'kanban' ? (
+          <div
+            className="grid grid-cols-1 gap-4 h-full"
+            style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}
+          >
+            {visibleStatuses.map((s) => {
+              const isCustom = !DEFAULT_STATUS_LABELS[s.key]
+              return renderColumn(
+                s.label,
+                s.key,
+                grouped[s.key] || [],
+                grouped[s.key]?.length || 0,
+                isCustom,
+                isCustom ? s.key : undefined,
+              )
+            })}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border/40 overflow-hidden bg-background">
+            <div className="grid grid-cols-[90px_80px_1fr_100px_120px_90px] gap-2 px-3 py-2 bg-muted/30 border-b border-border/30 text-[11px] font-semibold text-muted-foreground">
+              <button className="text-left hover:text-foreground flex items-center gap-1" onClick={() => { if (sortBy === 'wbs') setSortAsc(!sortAsc); else { setSortBy('wbs'); setSortAsc(true) } }}>WBS <ArrowUpDown className="h-3 w-3" /></button>
+              <button className="text-left hover:text-foreground flex items-center gap-1" onClick={() => { if (sortBy === 'type') setSortAsc(!sortAsc); else { setSortBy('type'); setSortAsc(true) } }}>구분 <ArrowUpDown className="h-3 w-3" /></button>
+              <button className="text-left hover:text-foreground flex items-center gap-1" onClick={() => { if (sortBy === 'name') setSortAsc(!sortAsc); else { setSortBy('name'); setSortAsc(true) } }}>작업명 <ArrowUpDown className="h-3 w-3" /></button>
+              <button className="text-left hover:text-foreground flex items-center gap-1" onClick={() => { if (sortBy === 'status') setSortAsc(!sortAsc); else { setSortBy('status'); setSortAsc(true) } }}>상태 <ArrowUpDown className="h-3 w-3" /></button>
+              <button className="text-left hover:text-foreground flex items-center gap-1" onClick={() => { if (sortBy === 'due') setSortAsc(!sortAsc); else { setSortBy('due'); setSortAsc(true) } }}>기한 <ArrowUpDown className="h-3 w-3" /></button>
+              <button className="text-right hover:text-foreground flex items-center justify-end gap-1" onClick={() => { if (sortBy === 'progress') setSortAsc(!sortAsc); else { setSortBy('progress'); setSortAsc(false) } }}>진척률 <ArrowUpDown className="h-3 w-3" /></button>
+            </div>
+            {sortedListCards.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-muted-foreground/50">조건에 맞는 항목이 없습니다</div>
+            ) : (
+              sortedListCards.map((card) => {
+                const status = getCardStatus(card)
+                const statusLabel = allStatusLabels[status] || status
+                const progressPct = Math.round((card.task.actual_progress || 0) * 100)
+                const dueDate = getCardDueDate(card)
+                const isDetail = card.type === 'detail'
+                return (
+                  <div
+                    key={isDetail ? card.detail.id : `task-${card.task.id}`}
+                    className="grid grid-cols-[90px_80px_1fr_100px_120px_90px] gap-2 px-3 py-2 border-b border-border/20 text-xs items-center hover:bg-accent/20 cursor-pointer"
+                    onClick={() => isDetail ? setCardDetailId(card.detail.id) : setEditTaskId(card.task.id)}
+                  >
+                    <span className="font-mono text-muted-foreground">{card.task.wbs_code}</span>
+                    <span>
+                      {isDetail ? (
+                        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] font-semibold text-blue-700">세부</span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0 text-[10px] font-semibold text-violet-700">WBS</span>
+                      )}
+                    </span>
+                    <span className="truncate">{isDetail ? card.detail.title : card.task.task_name}</span>
+                    <span className="text-muted-foreground">{statusLabel}</span>
+                    <span className="font-mono whitespace-nowrap text-muted-foreground">{dueDate || '-'}</span>
+                    <span className="text-right font-mono">{progressPct}%</span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
       </div>
 
       {/* 작업 상세 다이얼로그 (PM용) */}
